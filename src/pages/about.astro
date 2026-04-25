@@ -1,0 +1,67 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+<BaseLayout
+  title="About — Solo AI Dev"
+  description="Why this site exists, who it's for, and what you'll find here."
+>
+  <article class="prose">
+    <h1>About</h1>
+
+    <p>
+      Solo AI Dev is a build journal for one specific kind of person: a developer working alone,
+      using AI tools to ship more than one person normally could, and trying not to set fire to
+      a credit card to do it.
+    </p>
+
+    <h2>The premise</h2>
+
+    <p>
+      Frontier-model APIs are the fastest way to feel productive and the fastest way to spend
+      money. Local models on consumer hardware are free, but they hit a quality ceiling fast.
+      The interesting question isn't "which one?" — it's <em>where the line between them sits</em>,
+      and how you make both halves work together without ceremony.
+    </p>
+
+    <p>That's the entire beat of this site.</p>
+
+    <h2>What you'll find</h2>
+
+    <ul>
+      <li><strong>Stack write-ups</strong> — exact configs, real commands, no "you can also try X" filler.</li>
+      <li><strong>Benchmarks on consumer hardware</strong> — what a 7B model on an 8GB GPU actually delivers, with numbers.</li>
+      <li><strong>Cost breakdowns</strong> — monthly spend before and after each change, in dollars, not vibes.</li>
+      <li><strong>Failure notes</strong> — the things I tried that didn't work, so you don't repeat them.</li>
+    </ul>
+
+    <h2>What you won't find</h2>
+
+    <ul>
+      <li>"Top 10 AI tools" listicles for tools I haven't actually used.</li>
+      <li>Affiliate links shoved into copy that doesn't need them.</li>
+      <li>Speculation dressed up as advice. If I haven't run it, I'll say so.</li>
+    </ul>
+
+    <h2>The setup</h2>
+
+    <p>
+      Most of what I write about runs on a normal desktop: WSL2 on Windows, Ubuntu 24.04, a single
+      RTX 3070 (8GB VRAM). No cloud GPU, no Docker swarm, no team. If a workflow doesn't fit on
+      that, it's the wrong workflow for this audience.
+    </p>
+
+    <h2>How to follow</h2>
+
+    <p>
+      <a href="/rss.xml">RSS</a> is the canonical feed. I'll add an email option later. For now,
+      RSS is honest: no tracking, no algorithm.
+    </p>
+
+    <h2>Contact</h2>
+
+    <p>
+      Best way to reach me is to reply to whatever post brought you here once comments are wired
+      up — until then, the email in the site's <code>package.json</code> works.
+    </p>
+  </article>
+</BaseLayout>

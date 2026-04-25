@@ -1,0 +1,41 @@
+---
+interface Props {
+  variant?: 'inline' | 'card';
+}
+const { variant = 'inline' } = Astro.props;
+
+const FORM_ACTION = import.meta.env.PUBLIC_NEWSLETTER_ACTION || '';
+const enabled = FORM_ACTION.length > 0;
+---
+{enabled ? (
+  <form
+    class={`email-signup email-signup--${variant}`}
+    action={FORM_ACTION}
+    method="post"
+    target="_blank"
+    rel="noopener"
+  >
+    <label for="email-signup-input">
+      Get the next post by email. No spam, no tracking, unsubscribe in one click.
+    </label>
+    <div class="email-signup-row">
+      <input
+        type="email"
+        id="email-signup-input"
+        name="email"
+        placeholder="you@example.com"
+        required
+        autocomplete="email"
+      />
+      <button type="submit">Subscribe</button>
+    </div>
+    <p class="email-signup-note">
+      Or grab the <a href="/rss.xml">RSS feed</a> — same content, no email.
+    </p>
+  </form>
+) : (
+  <p class="email-signup-fallback">
+    Want updates? <a href="/rss.xml">RSS</a> is the canonical feed for now —
+    email signup launches once we pick a provider.
+  </p>
+)}

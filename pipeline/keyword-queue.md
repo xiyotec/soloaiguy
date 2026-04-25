@@ -3,13 +3,17 @@
 Topics ranked by SEO opportunity × audience fit × ability-to-write-with-authority.
 Move topics into editorial-calendar.md when they get queued for drafting.
 
+## Drafted (in editorial calendar — remove from queue)
+
+- ✅ #1 was: "How I run Claude Code + Aider + Ollama hybrid…" → drafted as `hybrid-claude-aider-ollama`, ships 2026-04-28
+- ✅ #2 was: "Setting up qwen2.5-coder:7b on a 3070" → drafted as `qwen-3070-benchmark`, ships 2026-05-01
+- ✅ #3 was: "The cheapest way to get into AI coding agents" → drafted as `cheapest-ai-coding-agent`, ships 2026-05-05
+- ✅ Bonus: "Run a coding agent on a cron" → drafted as `cron-driven-agent`, ships 2026-05-08
+
 ## High priority (write next)
 
 | # | Working title | Primary keyword | Audience pain | Affiliate angle |
 |---|---|---|---|---|
-| 1 | How I run Claude Code + Aider + Ollama hybrid to cut AI costs 80% | "claude code aider ollama" | "API bills are killing me" | Anthropic, hardware |
-| 2 | Setting up qwen2.5-coder:7b on a 3070: real-world benchmarks | "qwen 2.5 coder local benchmark" | "Will my GPU even run this?" | Hardware, hosting |
-| 3 | The cheapest way to get into AI coding agents (under $10/mo) | "cheap ai coding agent" | "I want in but can't justify the cost" | Anthropic referral, Aider |
 | 4 | Aider vs Cline vs Continue.dev: solo dev shootout | "aider vs cline vs continue" | "Which agent should I use?" | All three |
 | 5 | How much does Claude Code actually cost for a side project? | "claude code pricing real cost" | "Is this affordable?" | Anthropic |
 

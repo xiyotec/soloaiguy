@@ -1,0 +1,54 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+const updated = new Date('2026-04-24');
+const fmt = (d: Date) => d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+---
+<BaseLayout
+  title="Now — Solo AI Dev"
+  description="What I'm working on right now. Updated regularly."
+>
+  <article class="prose">
+    <h1>Now</h1>
+    <p class="meta">Last updated <time datetime={updated.toISOString()}>{fmt(updated)}</time>.</p>
+
+    <p>
+      A <a href="https://nownownow.com/about" rel="nofollow">/now page</a> — what I'm focused on
+      right now, not what I've ever done.
+    </p>
+
+    <h2>Building</h2>
+
+    <ul>
+      <li>This site. Week 0. Pipeline-first: a posting cadence I can sustain matters more than any one post.</li>
+      <li>A benchmark harness for consumer-GPU LLM evaluation. The first run is in <a href="/posts/qwen-3070-benchmark/">post #3</a> when it lands.</li>
+      <li>A hybrid Claude Code + Aider + Ollama workflow that automatically routes mechanical edits to a local model. Saves ~80% on API tokens for me.</li>
+    </ul>
+
+    <h2>Reading</h2>
+
+    <ul>
+      <li>Anthropic's tool-use and prompt-caching docs — looking for places to cut latency on the planning side of the hybrid stack.</li>
+      <li>The Aider source. Best way to understand the limits of small-model coding agents is to read the diff loop.</li>
+    </ul>
+
+    <h2>Not doing</h2>
+
+    <ul>
+      <li>Twitter/X engagement farming. Time goes to writing, not threading.</li>
+      <li>Side experiments outside the niche. One site, one beat, one year.</li>
+    </ul>
+
+    <h2>Stack right now</h2>
+
+    <ul>
+      <li><strong>Hardware:</strong> Desktop, RTX 3070 (8GB), WSL2 Ubuntu 24.04.</li>
+      <li><strong>Local model:</strong> <code>qwen2.5-coder:7b</code> via Ollama.</li>
+      <li><strong>Cloud model:</strong> Claude (the writing partner for this site).</li>
+      <li><strong>Site:</strong> Astro 5, GitHub Pages, zero hosting cost.</li>
+    </ul>
+
+    <p>
+      If something here changes and you'd like to know, <a href="/rss.xml">RSS</a> is the easiest way.
+    </p>
+  </article>
+</BaseLayout>
