@@ -28,4 +28,7 @@ scripts/results/
 # affiliate IDs / referral tokens — keep secrets out of repo
 .affiliates.local
 scripts/cron.log
+scripts/intel-log/
+scripts/exp-log/
+EXPERIMENT_NEEDS.md
 pipeline/research/
