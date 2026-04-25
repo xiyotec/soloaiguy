@@ -12,6 +12,7 @@ interface Props {
 const { title, description, image, type = 'website', pubDate, updatedDate, tags } = Astro.props;
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 const ogImage = image ? new URL(image, Astro.site) : new URL('/og-default.png', Astro.site);
+const cfBeaconToken = import.meta.env.PUBLIC_CF_WEB_ANALYTICS_TOKEN;
 
 const websiteSchema = {
   '@context': 'https://schema.org',
@@ -60,6 +61,13 @@ const articleSchema = type === 'article' && pubDate ? {
   <script type="application/ld+json" set:html={JSON.stringify(websiteSchema)} />
   <script type="application/ld+json" set:html={JSON.stringify(orgSchema)} />
   {articleSchema && <script type="application/ld+json" set:html={JSON.stringify(articleSchema)} />}
+  {cfBeaconToken && (
+    <script
+      defer
+      src="https://static.cloudflareinsights.com/beacon.min.js"
+      data-cf-beacon={`{"token": "${cfBeaconToken}"}`}
+    />
+  )}
 </head>
 <body>
   <header>
