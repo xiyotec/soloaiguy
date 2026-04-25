@@ -24,3 +24,8 @@ pnpm-debug.log*
 .idea/
 scripts/results/
 .aider*
+
+# affiliate IDs / referral tokens — keep secrets out of repo
+.affiliates.local
+scripts/cron.log
+pipeline/research/
