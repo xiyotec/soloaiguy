@@ -1,0 +1,22 @@
+# Affiliate product map — soloaiguy
+#
+# Format:  match-text|amazon-search-query
+#
+# match-text:           literal string searched in post body (case-sensitive,
+#                       word-boundary-aware so "RTX 3070" won't match inside
+#                       "RTX 30700")
+# amazon-search-query:  URL-encoded `k=` value for amazon.com/s?k=...; the
+#                       Amazon Associates tag is appended at runtime.
+#
+# Curate aggressively — only products you'd genuinely recommend. Linking to
+# every mention is the fastest way to look like a content farm and torch trust.
+#
+# To add a product: append a line, run `scripts/affiliate-injector.py --dry-run`.
+
+# --- Consumer GPUs (the soloaiguy core audience) ---
+RTX 3060|rtx+3060+12gb
+RTX 3070|rtx+3070+8gb
+RTX 4060|rtx+4060+ti
+RTX 4070|rtx+4070+ti+super
+RTX 4080|rtx+4080+super
+RTX 4090|rtx+4090+24gb

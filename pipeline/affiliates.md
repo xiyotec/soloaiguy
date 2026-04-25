@@ -39,7 +39,34 @@ Apply once 2–3 posts are live (~ week 2–3, est. 2026-05-15).
 Every post that contains an affiliate link gets a footnote:
 > *Some links in this post are affiliate links. They cost you nothing extra but help fund this blog. I only link to tools I actually use.*
 
+Posts containing Amazon links also include the Associates-required line:
+> *As an Amazon Associate I earn from qualifying purchases.*
+
 No exceptions. Trust > $0.50 of commission.
+
+## Injector workflow
+
+`scripts/affiliate-injector.py` automates Amazon link injection.
+
+1. Sign in to Amazon Associates → Account Settings → grab your tracking ID (`yourid-20`).
+2. Edit `~/.affiliates.local` (gitignored, WSL home):
+   ```
+   amazon-associates: yourid-20
+   ```
+3. Preview what would change:
+   ```
+   ./scripts/affiliate-injector.py --dry-run
+   ```
+4. Apply (writes posts, build-gates with `npm run build`, auto-commits to local main):
+   ```
+   ./scripts/affiliate-injector.py
+   ```
+5. `git push` when ready to deploy.
+
+The product map lives at `pipeline/affiliate-map.txt`. Add new products there.
+
+The script is **idempotent** — re-running won't duplicate links or disclosures.
+It **never pushes to origin** — deploy stays manual.
 
 ## What we will NOT do
 
