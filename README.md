@@ -1,6 +1,6 @@
-# soloaidev
+# soloaiguy
 
-Source for [soloaidev.com](https://soloaidev.com) — a blog about local-first AI for solo builders.
+Source for [soloaiguy.com](https://soloaiguy.com) — a blog about local-first AI for solo builders.
 
 ## Stack
 

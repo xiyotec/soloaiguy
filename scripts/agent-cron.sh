@@ -21,7 +21,7 @@
 #   AGENT=claude scripts/agent-cron.sh
 #
 # Cron entry (3am daily):
-#   0 3 * * * /home/xiyo/builds/soloaidev/scripts/agent-cron.sh >> /home/xiyo/builds/soloaidev/scripts/results/cron.log 2>&1
+#   0 3 * * * /home/xiyo/builds/soloaiguy/scripts/agent-cron.sh >> /home/xiyo/builds/soloaiguy/scripts/results/cron.log 2>&1
 
 set -euo pipefail
 

@@ -7,13 +7,13 @@ Each entry: what shipped, what we learned, what's costing money, what's next.
 ## Week of 2026-04-24 (week 0 — kickoff)
 
 **Shipped this week**
-- Domain decision: `soloaidev.com` (not registered yet — user action)
+- Domain decision: `soloaiguy.com` (not registered yet — user action)
 - Astro 5 site scaffolded: content collections, MDX, sitemap, RSS, robots.txt
 - BaseLayout + PostLayout + homepage + /posts/ index + [...slug] route
 - Lean global CSS with auto dark mode (~5KB on the wire)
 - GitHub Actions deploy workflow ready (waiting on repo)
 - Content pipeline scaffolded: keyword-queue (10 ranked topics), editorial-calendar, status, post-template, affiliates tracker
-- **Post #1 published:** "Hello from Solo AI Dev" — meta/intro post
+- **Post #1 published:** "Hello from Solo AI Guy" — meta/intro post
 - **Post #2 drafted:** "How I run Claude + Aider + Ollama hybrid and cut AI costs ~80%" — hero post for the niche, scheduled 2026-04-28
 - Affiliate signup quick-start guide at `pipeline/affiliate-signups.md`
 
@@ -31,9 +31,9 @@ Each entry: what shipped, what we learned, what's costing money, what's next.
 - 4-day soak between draft and publish is worth it: catches voice drift, lets Aider draft proof-points without time pressure.
 
 **Blockers (user actions, ~15 min total)**
-1. **Register `soloaidev.com`** — Cloudflare Registrar (~$10/yr, no markup) or Namecheap (~$11/yr).
+1. **Register `soloaiguy.com`** — Cloudflare Registrar (~$10/yr, no markup) or Namecheap (~$11/yr).
 2. **Create empty GitHub repo** named `soloaidev` (public). Don't initialize with README — we already have one.
-3. **Push initial commit + enable GH Pages.** From WSL: `cd ~/builds/soloaidev && git remote add origin git@github.com:<username>/soloaidev.git && git push -u origin main`. Then in repo Settings → Pages, set source to "GitHub Actions".
+3. **Push initial commit + enable GH Pages.** From WSL: `cd ~/builds/soloaidev && git remote add origin git@github.com:Xiyo/soloaiguy.git && git push -u origin main`. Then in repo Settings → Pages, set source to "GitHub Actions".
 4. **Apply for affiliates** — see `pipeline/affiliate-signups.md` for the order to do them.
 
 **Next session targets**
@@ -60,7 +60,7 @@ Each entry: what shipped, what we learned, what's costing money, what's next.
 - `/404.astro` — actual 404 page with useful links
 - `EmailSignup.astro` component — env-driven (`PUBLIC_NEWSLETTER_ACTION`), shows RSS fallback when no provider wired up; embedded on homepage
 - Nav updated: About + Now links added
-- `scripts/verify-build.sh` — wraps `npm run build` with nvm sourced; the working incantation is `MSYS_NO_PATHCONV=1 wsl -d Ubuntu-24.04 -- bash /home/xiyo/builds/soloaidev/scripts/verify-build.sh`
+- `scripts/verify-build.sh` — wraps `npm run build` with nvm sourced; the working incantation is `MSYS_NO_PATHCONV=1 wsl -d Ubuntu-24.04 -- bash /home/xiyo/builds/soloaiguy/scripts/verify-build.sh`
 
 **Build state**
 - `npm run build`: green, 7 static pages generated, drafts excluded by all collection consumers (`[...slug]`, posts index, homepage, RSS).
@@ -74,7 +74,7 @@ Each entry: what shipped, what we learned, what's costing money, what's next.
 - llama3.1:8b's algorithm-prompt failure (using `pop(0)` after the prompt explicitly asks for O(n+m)) is the cleanest demo of why 7B/8B models still need verification on real coding work.
 
 **Still pending user actions** (unchanged from above)
-1. Register `soloaidev.com`
+1. Register `soloaiguy.com`
 2. Create empty GitHub repo `soloaidev`
 3. Push initial commit + enable GH Pages
 4. Apply for affiliates per `pipeline/affiliate-signups.md`

@@ -16,14 +16,14 @@ const ogImage = image ? new URL(image, Astro.site) : new URL('/og-default.png', 
 const websiteSchema = {
   '@context': 'https://schema.org',
   '@type': 'WebSite',
-  name: 'Solo AI Dev',
+  name: 'Solo AI Guy',
   url: Astro.site?.toString(),
   description: 'Local-first AI for solo builders.',
 };
 const orgSchema = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
-  name: 'Solo AI Dev',
+  name: 'Solo AI Guy',
   url: Astro.site?.toString(),
 };
 const articleSchema = type === 'article' && pubDate ? {
@@ -34,8 +34,8 @@ const articleSchema = type === 'article' && pubDate ? {
   image: ogImage.toString(),
   datePublished: pubDate.toISOString(),
   ...(updatedDate && { dateModified: updatedDate.toISOString() }),
-  author: { '@type': 'Person', name: 'Solo AI Dev' },
-  publisher: { '@type': 'Organization', name: 'Solo AI Dev', url: Astro.site?.toString() },
+  author: { '@type': 'Person', name: 'Solo AI Guy' },
+  publisher: { '@type': 'Organization', name: 'Solo AI Guy', url: Astro.site?.toString() },
   mainEntityOfPage: { '@type': 'WebPage', '@id': canonicalURL.toString() },
   ...(tags && tags.length > 0 && { keywords: tags.join(', ') }),
 } : null;
@@ -55,14 +55,14 @@ const articleSchema = type === 'article' && pubDate ? {
   <meta property="og:url" content={canonicalURL} />
   <meta property="og:image" content={ogImage} />
   <meta name="twitter:card" content="summary_large_image" />
-  <link rel="alternate" type="application/rss+xml" title="Solo AI Dev" href="/rss.xml" />
+  <link rel="alternate" type="application/rss+xml" title="Solo AI Guy" href="/rss.xml" />
   <script type="application/ld+json" set:html={JSON.stringify(websiteSchema)} />
   <script type="application/ld+json" set:html={JSON.stringify(orgSchema)} />
   {articleSchema && <script type="application/ld+json" set:html={JSON.stringify(articleSchema)} />}
 </head>
 <body>
   <header>
-    <a href="/" class="brand">Solo AI Dev</a>
+    <a href="/" class="brand">Solo AI Guy</a>
     <nav>
       <a href="/posts/">Posts</a>
       <a href="/about/">About</a>

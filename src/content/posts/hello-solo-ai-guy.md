@@ -1,5 +1,5 @@
 ---
-title: "Hello from Solo AI Dev"
+title: "Hello from Solo AI Guy"
 description: "A blog about building real AI projects on cheap hardware, hybrid stacks, and a one-person budget."
 pubDate: 2026-04-24
 tags: ["meta", "stack"]
@@ -8,7 +8,7 @@ draft: false
 
 ## What this is
 
-Solo AI Dev is a blog about doing real AI work without enterprise budgets. No K8s clusters. No $100/day API bills. No team of ML engineers.
+Solo AI Guy is a blog about doing real AI work without enterprise budgets. No K8s clusters. No $100/day API bills. No team of ML engineers.
 
 Just one developer, one consumer GPU, and a stack tuned to keep dollars where they belong: in your pocket.
 

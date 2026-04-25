@@ -16,7 +16,7 @@ So here's the play: every night at 3am, a cron job picks one un-researched topic
 
 ## The whole thing in 60 lines
 
-The full script is at [`scripts/agent-cron.sh`](https://github.com/<username>/soloaidev/blob/main/scripts/agent-cron.sh). Skeleton:
+The full script is at [`scripts/agent-cron.sh`](https://github.com/xiyotec/soloaiguy/blob/main/scripts/agent-cron.sh). Skeleton:
 
 ```bash
 #!/usr/bin/env bash
@@ -56,7 +56,7 @@ Three real reasons it matters:
 ### The cron line
 
 ```
-0 3 * * * /home/xiyo/builds/soloaidev/scripts/agent-cron.sh >> /home/xiyo/builds/soloaidev/scripts/results/cron.log 2>&1
+0 3 * * * /home/xiyo/builds/soloaiguy/scripts/agent-cron.sh >> /home/xiyo/builds/soloaiguy/scripts/results/cron.log 2>&1
 ```
 
 3am is intentional — your machine is idle, electricity is often cheaper, and the model isn't competing for VRAM with your IDE.
@@ -95,7 +95,7 @@ The losses you correct in the morning:
 The script supports an `AGENT=claude` override. Some research topics genuinely need frontier-model reasoning — anything that requires synthesizing disagreement across sources. For those, set `AGENT=claude` in a separate cron line that runs less often:
 
 ```
-0 4 * * 0 AGENT=claude /home/xiyo/builds/soloaidev/scripts/agent-cron.sh
+0 4 * * 0 AGENT=claude /home/xiyo/builds/soloaiguy/scripts/agent-cron.sh
 ```
 
 (Sundays only — once a week, Claude burns ~$0.10 to research one hard topic. Acceptable.)

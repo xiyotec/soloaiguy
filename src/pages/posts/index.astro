@@ -7,7 +7,7 @@ const posts = (await getCollection('posts', ({ data }) => !data.draft))
 
 const fmt = (d: Date) => d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 ---
-<BaseLayout title="All posts — Solo AI Dev" description="Every post on local-first AI for solo builders.">
+<BaseLayout title="All posts — Solo AI Guy" description="Every post on local-first AI for solo builders.">
   <h1>All posts</h1>
   <ul class="post-list">
     {posts.map(post => (

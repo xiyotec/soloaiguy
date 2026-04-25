@@ -5,7 +5,7 @@ import type { APIContext } from 'astro';
 export async function GET(context: APIContext) {
   const posts = await getCollection('posts', ({ data }) => !data.draft);
   return rss({
-    title: 'Solo AI Dev',
+    title: 'Solo AI Guy',
     description: 'Local-first AI for solo builders.',
     site: context.site!,
     items: posts.map(post => ({

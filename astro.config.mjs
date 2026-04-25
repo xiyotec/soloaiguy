@@ -4,7 +4,7 @@ import mdx from '@astrojs/mdx';
 import sitemap from '@astrojs/sitemap';
 
 export default defineConfig({
-  site: 'https://soloaidev.com',
+  site: 'https://soloaiguy.com',
   integrations: [mdx(), sitemap()],
   markdown: {
     shikiConfig: {
