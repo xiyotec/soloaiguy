@@ -2,21 +2,27 @@
 
 Status: `not-applied` → `applied` → `approved` → `active` → `paying`
 
+Last updated: 2026-04-25
+
+**IDs and tokens live in `~/.affiliates.local` (WSL home, gitignored). Never commit IDs to this public repo.**
+
 ## Tier 1 — direct fit, sign up first
 
-| Program | Status | Commission | Notes |
-|---|---|---|---|
-| Anthropic referral | not-applied | TBD | Check if they have a referral/affiliate program. If not, skip. |
-| Cloudflare (Registrar/Pages) | not-applied | none | They don't pay affiliates but trustworthy mention. |
-| Namecheap | not-applied | ~20% | Domain referrals; small but easy. |
-| Hetzner | not-applied | €10/signup | If we ever cover VPS hosting. |
-| Fly.io | not-applied | TBD | Edge-friendly hosting, fits the niche. |
+| Program | Status | Commission | Applied | Notes |
+|---|---|---|---|---|
+| Amazon Associates | applied | 1–4% | 2026-04-25 | Auto-approves on signup; 180-day clock to first qualifying sale. ID stored in `~/.affiliates.local`. |
+| Namecheap (via Impact) | applied | ~20% | 2026-04-25 | Submitted via Impact marketplace; status "In Review". Email notification when decided. Impact account: `XiyoTec`, property ID 8309332. |
+| Anthropic referral | not-applied | TBD | — | No public consumer program found at signup time — skip unless one launches. |
+| Cloudflare (Registrar/Pages) | not-applied | none | — | They don't pay affiliates but trustworthy mention. |
+| Hetzner | not-applied | €10/signup | — | Optional; only if we end up covering VPS hosting and the user has a Hetzner account. |
+| Fly.io | not-applied | TBD | — | Edge-friendly hosting, fits the niche. |
 
 ## Tier 2 — adjacent, write the post then apply
 
+Apply once 2–3 posts are live (~ week 2–3, est. 2026-05-15).
+
 | Program | Status | Commission | Notes |
 |---|---|---|---|
-| Amazon Associates | not-applied | 1–4% | Hardware reviews (GPUs, RAM). Low payout but easy. |
 | Newegg | not-applied | 1–3% | Same as Amazon, alternative for builders. |
 | Ghost | not-applied | TBD | If we ever cover newsletter setups. |
 | Beehiiv | not-applied | $25–100 | Newsletter platform; pays better than Ghost. |
