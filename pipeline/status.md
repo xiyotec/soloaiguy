@@ -102,3 +102,47 @@ Each entry: what shipped, what we learned, what's costing money, what's next.
 - `soloaidev_project.md` — refreshed with current editorial state (4 posts drafted, site features in place).
 - `wsl_build_invocation.md` — captured the `MSYS_NO_PATHCONV=1 wsl -- bash /path/script.sh` pattern as a reference memory.
 - `MEMORY.md` index updated.
+
+---
+
+### Session addendum 3 — 2026-04-25 (rebrand + deploy)
+
+**Brand pivot mid-flight**
+- User had a change of heart at the domain registrar: `soloaidev` → **`soloaiguy`**.
+- Bulk rebrand executed via `scripts/rebrand.sh` (sed across 17 files): site URL, package name, all copy, repo URL, post slug `hello-solo-ai-dev` → `hello-solo-ai-guy`, WSL dir `~/builds/soloaidev` → `~/builds/soloaiguy`.
+- Build still green post-rebrand.
+
+**Shipped**
+- **Domain registered:** `soloaiguy.com` (Namecheap, order 200717084, ~$11/yr).
+- **GitHub repo created:** `xiyotec/soloaiguy` (public). Username is `xiyotec`, not `Xiyo`.
+- **Initial push:** required `gh auth refresh -s workflow` to grant the workflow scope (push rejected without it), then `gh auth setup-git` to wire gh as the git credential helper (push hung silently otherwise).
+- **GH Pages deploy fix:** initial workflow used `node-version: 20`, but Astro 6 requires `>=22.12`. Bumped to `node-version: 22`. Two failed runs before that fix.
+- **DNS configured at Namecheap:** 4 A records (`185.199.108–111.153`) on `@`, plus CNAME `www` → `xiyotec.github.io.`. User initially typed `0` instead of `@` for Host on all 4 A records — caught via screenshot, walked through the fix.
+- **SSL approved + HTTPS enforced:** cert covers `soloaiguy.com` and `www.soloaiguy.com`, expires 2026-07-24.
+- **Site is live:** `https://soloaiguy.com/` returns 200.
+
+**Learned (this block)**
+- The `mode change 100755 => 100644` on shell scripts is a UNC-path footgun: editing scripts via `\\wsl.localhost\...` strips the exec bit. Restore with `chmod +x scripts/*.sh` and a follow-up commit.
+- `gh push` over OAuth needs the **`workflow` scope** to push anything under `.github/workflows/`. The default `repo` scope is not enough.
+- After `gh auth login`, you still need `gh auth setup-git` for git itself to use gh's token. Without it, `git push` hangs because no credential helper is wired.
+- Astro's Node version floor moves with minor releases — pin the workflow to the actual repo Node, not whatever was current last quarter.
+
+**Spend update**
+| Item | Amount |
+|---|---|
+| Domain (`soloaiguy.com`, 1yr) | $11.18 |
+| Anthropic API (today) | est. <$2 |
+| Hosting | $0 (GH Pages) |
+| **New total** | **~$13** |
+
+**Still pending user actions**
+1. Verify Namecheap contact email within 15 days (ICANN requirement — they sent a verification link).
+2. Apply for affiliates per `pipeline/affiliate-signups.md`.
+3. Optional: install the cron entry below to run the research agent nightly.
+
+**Cron schedule (proposed)**
+```cron
+# Run research agent nightly at 02:30 local
+30 2 * * * /home/xiyo/builds/soloaiguy/scripts/agent-cron.sh >> /home/xiyo/builds/soloaiguy/scripts/cron.log 2>&1
+```
+Install with `crontab -e` in WSL. The script picks the next un-researched queue item and writes a scaffold to `pipeline/research/`.
