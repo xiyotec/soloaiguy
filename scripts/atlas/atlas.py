@@ -34,6 +34,7 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -76,15 +77,61 @@ PRICING = {
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "atlas.log"
+
+# Redact secrets before they hit any handler. Order matters: most-specific
+# patterns first so generic catch-alls don't strip the prefix you'd use to
+# debug ("hm, is that an Anthropic key or a GitHub PAT?").
+_REDACT_PATTERNS = [
+    (re.compile(r"sk-ant-[A-Za-z0-9_\-]{20,}"), "sk-ant-***"),
+    (re.compile(r"github_pat_[A-Za-z0-9_]{40,}"), "github_pat_***"),
+    (re.compile(r"ghp_[A-Za-z0-9]{30,}"), "ghp_***"),
+    (re.compile(r"gho_[A-Za-z0-9]{30,}"), "gho_***"),
+    (re.compile(r"sk-[A-Za-z0-9_\-]{20,}"), "sk-***"),
+    (re.compile(r"AKIA[0-9A-Z]{16}"), "AKIA***"),
+    (re.compile(r"AIza[0-9A-Za-z\-_]{35}"), "AIza***"),
+    (re.compile(r"xox[baprs]-[A-Za-z0-9\-]{10,}"), "xox*-***"),
+    (re.compile(r"\b\d{8,12}:[A-Za-z0-9_\-]{30,}\b"), "<bot_token>"),
+    (re.compile(r"(?i)(authorization:\s*bearer\s+)[A-Za-z0-9._\-]{20,}"), r"\1***"),
+    (re.compile(r"(?i)(x-api-key:\s*)[A-Za-z0-9._\-]{20,}"), r"\1***"),
+]
+
+
+def _redact(s: str) -> str:
+    for pat, repl in _REDACT_PATTERNS:
+        s = pat.sub(repl, s)
+    return s
+
+
+class _RedactingFilter(logging.Filter):
+    """Strips API keys, tokens, and bot secrets from every log record before
+    it reaches a handler. Catches both already-formatted messages and the
+    %-args path that lazy-formatters use."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = _redact(record.msg)
+        if record.args:
+            try:
+                record.args = tuple(
+                    _redact(a) if isinstance(a, str) else a for a in record.args
+                ) if isinstance(record.args, tuple) else record.args
+            except Exception:
+                pass
+        return True
+
+
 _log_format = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+_redactor = _RedactingFilter()
 _stream_handler = logging.StreamHandler(sys.stdout)
 _stream_handler.setFormatter(_log_format)
+_stream_handler.addFilter(_redactor)
 # Rotate at 1 MB, keep 5 backups (~5 MB total). Replaces the old `tee -a`
 # pattern that grew unbounded.
 _file_handler = RotatingFileHandler(
     LOG_FILE, maxBytes=1_000_000, backupCount=5, encoding="utf-8",
 )
 _file_handler.setFormatter(_log_format)
+_file_handler.addFilter(_redactor)
 logging.basicConfig(level=logging.INFO, handlers=[_stream_handler, _file_handler])
 log = logging.getLogger("atlas")
 
