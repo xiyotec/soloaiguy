@@ -48,23 +48,30 @@ async function exists(p) {
 
 async function generate(prompt, outPath) {
   console.log(`  prompt: ${prompt.slice(0, 90)}…`);
-  const res = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${TOKEN}`,
-      'Content-Type': 'application/json',
-      Prefer: 'wait=60',
-    },
-    body: JSON.stringify({
-      input: {
-        prompt,
-        aspect_ratio: '16:9',
-        output_format: 'png',
-        num_outputs: 1,
-        num_inference_steps: 4,
+  let res;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    res = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${TOKEN}`,
+        'Content-Type': 'application/json',
+        Prefer: 'wait=60',
       },
-    }),
-  });
+      body: JSON.stringify({
+        input: {
+          prompt,
+          aspect_ratio: '16:9',
+          output_format: 'png',
+          num_outputs: 1,
+          num_inference_steps: 4,
+        },
+      }),
+    });
+    if (res.status !== 429) break;
+    const retry = parseInt(res.headers.get('retry-after') || '12', 10);
+    console.log(`  rate-limited, sleeping ${retry}s…`);
+    await new Promise(r => setTimeout(r, (retry + 2) * 1000));
+  }
   if (!res.ok) {
     throw new Error(`replicate POST ${res.status}: ${await res.text()}`);
   }
@@ -106,6 +113,7 @@ async function main() {
     const prompt = `${STYLE}. Mood inspired by: "${title}". ${desc}`.slice(0, 500);
     console.log(`gen ${slug}`);
     await generate(prompt, out);
+    await new Promise(r => setTimeout(r, 12000)); // stay under 6/min
   }
 
   if (FORCE || !(await exists(DEFAULT_OG))) {
