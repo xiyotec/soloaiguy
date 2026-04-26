@@ -3,10 +3,11 @@
 All tool handlers return a string (the tool_result content). They never raise —
 errors are returned as text so Atlas can recover and tell Xiyo what failed.
 
-Philosophy: Atlas is trusted to act. The hard guardrails block only catastrophic
-actions (privilege escalation, disk wipe, supply-chain attacks, secret-file
-writes). Everything else is Atlas's judgment — the system prompt tells him to
-verify what he's installing or running before he does it.
+Philosophy: Atlas is trusted to act. Safety lives at the OS layer — Atlas runs
+as its own Linux user with a locked password, no sudo, an isolated home dir,
+and a scoped GitHub PAT (xiyotec/soloaiguy only). Blast radius of any action
+is bounded by those perms. The system prompt tells Atlas to vet what it's
+installing or running before doing it.
 """
 
 from __future__ import annotations
@@ -31,13 +32,14 @@ TOOL_DEFS = [
     {
         "name": "bash",
         "description": (
-            "Run a shell command from the soloaiguy repo root. You have wide "
+            "Run a shell command from the soloaiguy repo root. You have full "
             "latitude — git ops (including push), npm, python, file edits via "
-            "sed/awk, curl for legitimate API calls, etc. Hard-blocked: sudo, "
-            "rm -rf / or ~, dd to disks, mkfs, fork bombs, chmod -R 777, "
-            "supply-chain attacks (curl|sh, wget|sh), force-push to main, and "
-            "writes to ~/.soloaiguy.env or ~/.affiliates.local. Default timeout "
-            "60s; pass timeout_seconds for longer."
+            "sed/awk, curl, etc. You run as the 'atlas' Linux user with no "
+            "sudo and an isolated home dir, so the OS bounds the blast radius. "
+            "Two things to watch yourself on: (1) curl|sh / wget|sh — vet the "
+            "script first, never pipe untrusted content to a shell; (2) "
+            "force-push to main — don't rewrite published history without "
+            "Xiyo's say-so. Default timeout 60s; pass timeout_seconds (max 600)."
         ),
         "input_schema": {
             "type": "object",
@@ -94,9 +96,8 @@ TOOL_DEFS = [
         "description": (
             "Write content to a file in the repo (creates or overwrites). USE "
             "patch_file FOR EDITS — write_file is only for new files or full "
-            "rewrites. Hard-blocked: any path matching .env*, ~/.soloaiguy.env, "
-            "~/.affiliates.local, ~/.ssh/*, .aider.conf.yml, anything outside "
-            "the repo."
+            "rewrites. Path must resolve inside the repo root; absolute paths "
+            "or '..' that escape the repo are rejected."
         ),
         "input_schema": {
             "type": "object",
@@ -149,31 +150,6 @@ TOOL_DEFS = [
     },
 ]
 
-# Hard catastrophic denylist. Anything matching these substrings is rejected
-# before execution. The bash handler also does targeted checks for
-# pipe-to-shell, force-push to main, and secret-file writes.
-CATASTROPHIC_BASH_PATTERNS = (
-    "sudo ", "su -", "su root",
-    "rm -rf /", "rm -rf ~", "rm -rf $HOME", "rm -rf ..", "rm -rf /*",
-    "dd if=", "dd of=/dev/",
-    "mkfs.", "/dev/sda", "/dev/nvme", "/dev/disk",
-    "chmod -R 777", "chmod 777 /",
-    ":(){ :|:& };:", ":(){:|:&};:",
-)
-
-# Detected via regex-ish substring scan.
-SECRET_FILE_WRITE_PATTERNS = (
-    "> ~/.soloaiguy.env", ">> ~/.soloaiguy.env",
-    "> ~/.affiliates.local", ">> ~/.affiliates.local",
-    "> ~/.ssh/", ">> ~/.ssh/",
-    "> ~/.aws/", ">> ~/.aws/",
-    "> /home/xiyo/.soloaiguy.env", "> /home/xiyo/.affiliates.local",
-)
-
-PIPE_TO_SHELL_PATTERNS = ("| sh", "| bash", "|sh ", "|bash ", "| sh\n", "| bash\n")
-FORCE_PUSH_MAIN = ("git push --force origin main", "git push -f origin main",
-                   "git push --force-with-lease origin main")
-
 CRON_SCRIPTS = {
     "intel-cron": "scripts/intel-cron.sh",
     "exp-cron": "scripts/exp-cron.sh",
@@ -181,14 +157,6 @@ CRON_SCRIPTS = {
     "social-cron": "scripts/social-cron.sh",
     "affiliate-injector": "scripts/affiliate-injector.py",
 }
-
-# write_file path policy
-WRITE_DENY_SUFFIXES = (".env", ".env.local", ".env.production")
-WRITE_DENY_BASENAMES = (
-    ".soloaiguy.env", ".affiliates.local",
-    ".aider.conf.yml", ".aider.architect.conf.yml",
-)
-WRITE_DENY_PATH_FRAGMENTS = ("/.ssh/", "/.aws/", "/.docker/")
 
 
 def _run_shell(cmd: str, timeout: int = 60, env: dict | None = None) -> str:
@@ -210,35 +178,10 @@ def _run_shell(cmd: str, timeout: int = 60, env: dict | None = None) -> str:
     return out
 
 
-def _bash_safety_check(cmd: str) -> str | None:
-    """Return None if safe, or a denial reason string."""
-    lc = cmd.lower()
-    for pat in CATASTROPHIC_BASH_PATTERNS:
-        if pat in cmd:
-            return f"BLOCKED (catastrophic): command contains '{pat.strip()}'."
-    for pat in SECRET_FILE_WRITE_PATTERNS:
-        if pat in cmd:
-            return f"BLOCKED (secret-file write): '{pat}'. If you need to update env vars, ask Xiyo to do it manually."
-    for pat in PIPE_TO_SHELL_PATTERNS:
-        if pat in lc:
-            return (
-                "BLOCKED (supply-chain risk): pipe-to-shell pattern detected. "
-                "Download the script with curl/wget to a file first, READ it "
-                "yourself to verify it isn't malicious, then run it explicitly."
-            )
-    for pat in FORCE_PUSH_MAIN:
-        if pat in cmd:
-            return f"BLOCKED (force-push to main): '{pat}'. Tell Xiyo what you wanted to overwrite and let them decide."
-    return None
-
-
 def handle_bash(command: str, timeout_seconds: int | None = None) -> str:
     cmd = command.strip()
     if not cmd:
         return "ERROR: empty command"
-    denial = _bash_safety_check(cmd)
-    if denial:
-        return denial
     timeout = max(1, min(int(timeout_seconds or 60), 600))
     return _run_shell(cmd, timeout=timeout)
 
@@ -291,29 +234,12 @@ def handle_read_file(path: str, offset: int = 1, limit: int = 400) -> str:
     return f"{header}\n{window}"
 
 
-def _write_path_denied(path: str, full: Path) -> str | None:
-    name = full.name
-    s = str(full)
-    if name in WRITE_DENY_BASENAMES:
-        return f"BLOCKED: '{name}' is a secret/config file."
-    for suf in WRITE_DENY_SUFFIXES:
-        if name.endswith(suf):
-            return f"BLOCKED: writes to '{suf}' files are blocked (secrets)."
-    for frag in WRITE_DENY_PATH_FRAGMENTS:
-        if frag in s:
-            return f"BLOCKED: path contains '{frag}' (sensitive directory)."
-    return None
-
-
 def handle_write_file(path: str, content: str) -> str:
     if len(content.encode("utf-8")) > MAX_WRITE_BYTES:
         return f"DENIED: content exceeds {MAX_WRITE_BYTES} byte cap. Split into smaller files."
     full = _resolve_repo_path(path)
     if full is None:
         return f"DENIED: path '{path}' escapes repo root"
-    denied = _write_path_denied(path, full)
-    if denied:
-        return denied
     if full.is_dir():
         return f"DENIED: '{path}' is a directory."
     try:
@@ -335,9 +261,6 @@ def handle_patch_file(path: str, old_string: str, new_string: str,
     full = _resolve_repo_path(path)
     if full is None:
         return f"DENIED: path '{path}' escapes repo root"
-    denied = _write_path_denied(path, full)
-    if denied:
-        return denied
     if not full.exists():
         return f"NOT FOUND: {path} — use write_file to create new files."
     if full.is_dir():
