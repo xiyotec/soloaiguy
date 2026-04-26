@@ -237,8 +237,34 @@ def _tool_result_ids(content: list) -> set[str]:
     }
 
 
+_SERVER_TOOL_BLOCK_TYPES = {"server_tool_use", "web_search_tool_result"}
+
+
+def _strip_server_tool_blocks(content: list) -> list:
+    """Remove server-side tool blocks (web_search etc.) from a content list.
+
+    Anthropic emits server_tool_use + web_search_tool_result block pairs in
+    the assistant message when the model uses a server-side tool. Persisting
+    both across turns is (a) wasteful — a single search adds 10-50K tokens of
+    raw snippets — and (b) fragile: if the pair gets desynchronized in storage
+    or replay, the next API call dies with a 400 ("orphan web_search_tool_result").
+    The model's text response already absorbs the searched content, so dropping
+    the raw blocks loses no real information.
+    """
+    if not isinstance(content, list):
+        return content
+    return [
+        b for b in content
+        if not (isinstance(b, dict) and b.get("type") in _SERVER_TOOL_BLOCK_TYPES)
+    ]
+
+
 def _sanitize_history(msgs: list[dict]) -> list[dict]:
-    """Drop any message that participates in a broken tool round-trip."""
+    """Drop any message that participates in a broken tool round-trip, and
+    strip server-side tool blocks from anything that survives (defensive — old
+    rows from before the save-time strip landed may still contain them)."""
+    for m in msgs:
+        m["content"] = _strip_server_tool_blocks(m["content"])
     keep = [True] * len(msgs)
     for i, m in enumerate(msgs):
         if m["role"] == "assistant":
@@ -258,6 +284,9 @@ def _sanitize_history(msgs: list[dict]) -> list[dict]:
             if not tr_ids.issubset(tu_ids):
                 keep[i] = False
     out = [m for m, k in zip(msgs, keep) if k]
+    # Drop messages that are now empty after stripping (e.g. an assistant
+    # message that was ONLY web_search blocks with no text).
+    out = [m for m in out if m["content"]]
     while out and out[0]["role"] != "user":
         out.pop(0)
     while out and out[0]["role"] == "user" and _tool_result_ids(out[0]["content"]):
@@ -266,6 +295,13 @@ def _sanitize_history(msgs: list[dict]) -> list[dict]:
 
 
 def save_message(chat_id: str, role: str, content: list) -> None:
+    # Strip server-side tool blocks (web_search) before persist. The model's
+    # text already incorporates the search content; re-sending the raw result
+    # blocks across turns wastes 10-50K tokens AND breaks if the pair gets
+    # split (orphan web_search_tool_result -> Anthropic 400).
+    content = _strip_server_tool_blocks(content)
+    if not content:
+        return
     ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
     with _db() as conn:
         conn.execute(
