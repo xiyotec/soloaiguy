@@ -139,11 +139,14 @@ def _db() -> sqlite3.Connection:
 def load_history(chat_id: str, n: int = HISTORY_TURNS * 2) -> list[dict]:
     """Return the last N message rows in Anthropic format (oldest first).
 
-    The Anthropic API requires that any `tool_result` block has a corresponding
-    `tool_use` block in the immediately previous assistant message. A naive
-    LIMIT/OFFSET truncation can split a tool round-trip and leave an orphan
-    tool_result at the start, producing a 400. So we trim the head of the
-    window until it begins with a clean user-text message.
+    The Anthropic API requires every tool_use to be followed immediately by a
+    user message containing matching tool_result blocks for ALL of its ids.
+    History can be broken in two ways:
+      1. LIMIT truncation splits a round-trip, leaving an orphan tool_result
+         at the head.
+      2. A previous run crashed AFTER saving the assistant tool_use but BEFORE
+         saving the tool_result, leaving an orphan tool_use mid-history.
+    Both cause 400s. We walk the window and drop any incomplete tool round-trip.
     """
     with _db() as conn:
         rows = conn.execute(
@@ -155,16 +158,49 @@ def load_history(chat_id: str, n: int = HISTORY_TURNS * 2) -> list[dict]:
         {"role": r["role"], "content": json.loads(r["content_json"])}
         for r in reversed(rows)
     ]
+    return _sanitize_history(msgs)
 
-    def _has_tool_result(content: list) -> bool:
-        return any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
 
-    while msgs:
-        first = msgs[0]
-        if first["role"] == "user" and not _has_tool_result(first["content"]):
-            break
-        msgs.pop(0)
-    return msgs
+def _tool_use_ids(content: list) -> set[str]:
+    return {
+        b.get("id") for b in content
+        if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("id")
+    }
+
+
+def _tool_result_ids(content: list) -> set[str]:
+    return {
+        b.get("tool_use_id") for b in content
+        if isinstance(b, dict) and b.get("type") == "tool_result" and b.get("tool_use_id")
+    }
+
+
+def _sanitize_history(msgs: list[dict]) -> list[dict]:
+    """Drop any message that participates in a broken tool round-trip."""
+    keep = [True] * len(msgs)
+    for i, m in enumerate(msgs):
+        if m["role"] == "assistant":
+            tu_ids = _tool_use_ids(m["content"])
+            if not tu_ids:
+                continue
+            nxt = msgs[i + 1] if i + 1 < len(msgs) else None
+            tr_ids = _tool_result_ids(nxt["content"]) if nxt and nxt["role"] == "user" else set()
+            if not tu_ids.issubset(tr_ids):
+                keep[i] = False
+        elif m["role"] == "user":
+            tr_ids = _tool_result_ids(m["content"])
+            if not tr_ids:
+                continue
+            prv = msgs[i - 1] if i > 0 else None
+            tu_ids = _tool_use_ids(prv["content"]) if prv and prv["role"] == "assistant" else set()
+            if not tr_ids.issubset(tu_ids):
+                keep[i] = False
+    out = [m for m, k in zip(msgs, keep) if k]
+    while out and out[0]["role"] != "user":
+        out.pop(0)
+    while out and out[0]["role"] == "user" and _tool_result_ids(out[0]["content"]):
+        out.pop(0)
+    return out
 
 
 def save_message(chat_id: str, role: str, content: list) -> None:
