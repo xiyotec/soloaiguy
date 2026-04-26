@@ -177,7 +177,9 @@ def _run_shell(cmd: str, timeout: int = 60, env: dict | None = None) -> str:
     out = (proc.stdout or "") + ("\n--stderr--\n" + proc.stderr if proc.stderr else "")
     if proc.returncode != 0:
         out = f"(exit {proc.returncode})\n{out}"
-    return out[-8000:] if len(out) > 8000 else out
+    if len(out) > 4000:
+        out = f"... (truncated, kept last 4000 of {len(out)} chars)\n" + out[-4000:]
+    return out
 
 
 def _bash_safety_check(cmd: str) -> str | None:
@@ -239,8 +241,8 @@ def handle_read_file(path: str) -> str:
         text = full.read_text(errors="replace")
     except Exception as e:
         return f"READ ERROR: {e}"
-    if len(text) > 12000:
-        text = text[:12000] + f"\n\n... (truncated, file is {len(text)} chars total)"
+    if len(text) > 8000:
+        text = text[:8000] + f"\n\n... (truncated at 8000 chars; full file is {len(text)} chars — read again with offset if you need more)"
     return text
 
 

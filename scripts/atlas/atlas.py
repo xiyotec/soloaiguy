@@ -234,15 +234,28 @@ def set_state(key: str, value: str) -> None:
 
 # --- spend tracking ------------------------------------------------------
 
-def _price(model: str, in_toks: int, out_toks: int) -> float:
+# Cache pricing multipliers (Anthropic standard):
+#   write to cache = 1.25x base input
+#   read from cache (hit) = 0.10x base input
+CACHE_WRITE_MULT = 1.25
+CACHE_READ_MULT = 0.10
+
+
+def _price(model: str, in_toks: int, out_toks: int,
+           cache_write: int = 0, cache_read: int = 0) -> float:
     in_rate, out_rate = PRICING.get(model, (3.0, 15.0))
-    return (in_toks * in_rate + out_toks * out_rate) / 1_000_000
+    base = in_toks * in_rate + out_toks * out_rate
+    cache = cache_write * in_rate * CACHE_WRITE_MULT + cache_read * in_rate * CACHE_READ_MULT
+    return (base + cache) / 1_000_000
 
 
-def record_spend(model: str, in_toks: int, out_toks: int) -> tuple[float, float]:
+def record_spend(model: str, in_toks: int, out_toks: int,
+                 cache_write: int = 0, cache_read: int = 0) -> tuple[float, float]:
     """Returns (today_usd, month_to_date_usd)."""
     today = datetime.date.today().isoformat()
-    cost = _price(model, in_toks, out_toks)
+    cost = _price(model, in_toks, out_toks, cache_write, cache_read)
+    # Track cache tokens as input (column doesn't distinguish; cost is what matters)
+    total_in = in_toks + cache_write + cache_read
     with _db() as conn:
         conn.execute(
             "INSERT INTO spend (day, input_tokens, output_tokens, usd) VALUES (?,?,?,?) "
@@ -250,7 +263,7 @@ def record_spend(model: str, in_toks: int, out_toks: int) -> tuple[float, float]
             "input_tokens = input_tokens + excluded.input_tokens, "
             "output_tokens = output_tokens + excluded.output_tokens, "
             "usd = usd + excluded.usd",
-            (today, in_toks, out_toks, cost),
+            (today, total_in, out_toks, cost),
         )
         conn.commit()
         today_usd = conn.execute("SELECT usd FROM spend WHERE day = ?", (today,)).fetchone()["usd"]
@@ -348,6 +361,86 @@ def tg_poll_loop():
             yield text, msg.get("message_id", 0)
 
 
+# --- API call with caching + smart retries -------------------------------
+
+def _system_blocks(system_text: str) -> list[dict]:
+    """System prompt as a single cache-controlled text block."""
+    return [{
+        "type": "text",
+        "text": system_text,
+        "cache_control": {"type": "ephemeral"},
+    }]
+
+
+def _tools_with_cache(tool_defs: list) -> list:
+    """Return tool defs with cache_control on the last entry. The cache point
+    covers everything before it (system + all tools), so subsequent calls
+    within 5 min hit the cache for the entire stable prefix."""
+    if not tool_defs:
+        return tool_defs
+    cached = [dict(t) for t in tool_defs]
+    cached[-1]["cache_control"] = {"type": "ephemeral"}
+    return cached
+
+
+def _retry_after_seconds(err: Exception) -> int | None:
+    """Extract retry-after from a RateLimitError's HTTP response headers."""
+    try:
+        resp = getattr(err, "response", None)
+        if resp is None:
+            return None
+        ra = resp.headers.get("retry-after")
+        if ra is None:
+            return None
+        return max(1, min(int(float(ra)), 300))
+    except Exception:
+        return None
+
+
+def _usage_get(usage, attr: str) -> int:
+    return int(getattr(usage, attr, 0) or 0)
+
+
+def call_model(history: list, system_text: str):
+    """Call the model with prompt caching + adaptive retry on rate limits.
+
+    Strategy on 429:
+      attempt 1: respect retry-after header (or 30s), full history.
+      attempt 2: 60s, halve history (preserving tool-pair integrity).
+      attempt 3: 120s, halve again.
+    Returns the API response or raises.
+    """
+    sys_blocks = _system_blocks(system_text)
+    tools_blocks = _tools_with_cache(atlas_tools.TOOL_DEFS)
+
+    attempts = [
+        (None, history),  # first try: server's retry-after, full history
+        (60, _sanitize_history(history[len(history) // 2:])),
+        (120, _sanitize_history(history[3 * len(history) // 4:])),
+    ]
+    last_err: Exception | None = None
+    for i, (fallback_sleep, msgs) in enumerate(attempts):
+        try:
+            return client.messages.create(
+                model=MODEL,
+                max_tokens=MAX_TOKENS,
+                system=sys_blocks,
+                tools=tools_blocks,
+                messages=msgs,
+            )
+        except anthropic.RateLimitError as e:
+            last_err = e
+            wait = _retry_after_seconds(e) or fallback_sleep or 30
+            log.warning("rate limited (attempt %d/%d); waiting %ds. msgs=%d",
+                        i + 1, len(attempts), wait, len(msgs))
+            if i == 0:
+                tg_send(f"(rate limited — waiting {wait}s)")
+            time.sleep(wait)
+    if last_err is not None:
+        raise last_err
+    raise RuntimeError("call_model: exhausted retries without an error — should never happen")
+
+
 # --- agent loop ----------------------------------------------------------
 
 def _content_for_message(msg: dict) -> list:
@@ -410,26 +503,11 @@ def handle_user_message(chat_id: str, user_text: str) -> None:
 
     for turn in range(MAX_TURNS_PER_MESSAGE):
         try:
-            resp = client.messages.create(
-                model=MODEL,
-                max_tokens=MAX_TOKENS,
-                system=system_text,
-                tools=atlas_tools.TOOL_DEFS,
-                messages=history,
-            )
+            resp = call_model(history, system_text)
         except anthropic.RateLimitError as e:
-            log.warning("rate limited; sleeping 60s before retry: %s", e)
-            tg_send("(rate limited — sleeping 60s. Reply 'reset' to clear history if this keeps happening.)")
-            time.sleep(60)
-            try:
-                resp = client.messages.create(
-                    model=MODEL, max_tokens=MAX_TOKENS,
-                    system=system_text, tools=atlas_tools.TOOL_DEFS, messages=history,
-                )
-            except Exception as e2:
-                log.error("rate limit retry failed: %s", e2)
-                tg_send(f"Still rate limited. Try a shorter prompt or 'reset'.")
-                return
+            log.error("still rate limited after retries: %s", e)
+            tg_send("Still rate limited after retries. Try 'reset' or a shorter prompt.")
+            return
         except anthropic.APIError as e:
             log.error("Anthropic API error: %s", e)
             tg_send(f"API error: {str(e)[:500]}")
@@ -439,9 +517,15 @@ def handle_user_message(chat_id: str, user_text: str) -> None:
             tg_send(f"Crashed in API call: {type(e).__name__}: {str(e)[:300]}")
             return
 
-        in_toks = resp.usage.input_tokens
-        out_toks = resp.usage.output_tokens
-        _, mtd = record_spend(MODEL, in_toks, out_toks)
+        usage = resp.usage
+        in_toks = _usage_get(usage, "input_tokens")
+        out_toks = _usage_get(usage, "output_tokens")
+        cache_write = _usage_get(usage, "cache_creation_input_tokens")
+        cache_read = _usage_get(usage, "cache_read_input_tokens")
+        _, mtd = record_spend(MODEL, in_toks, out_toks, cache_write, cache_read)
+        if cache_write or cache_read:
+            log.info("usage in=%d out=%d cache_write=%d cache_read=%d",
+                     in_toks, out_toks, cache_write, cache_read)
 
         assistant_content = _content_for_message(resp)
         save_message(chat_id, "assistant", assistant_content)
