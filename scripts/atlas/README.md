@@ -42,8 +42,9 @@ at a time.
 export ATLAS_TELEGRAM_BOT_TOKEN="123456:ABC..."
 export ATLAS_TELEGRAM_CHAT_ID="123456789"
 export ANTHROPIC_API_KEY="sk-ant-..."
-# Optional model override (default: claude-haiku-4-5-20251001)
-# export ATLAS_MODEL="claude-sonnet-4-6"
+# Default model is claude-sonnet-4-6 (~$0.04/turn, ~$90/mo at 75 msgs/day).
+# Drop to Haiku for 3x cheaper at the cost of some judgement:
+# export ATLAS_MODEL="claude-haiku-4-5-20251001"
 ```
 
 ### 3. Install the SDK
@@ -59,27 +60,29 @@ Foreground (for debugging):
 ./scripts/atlas/atlas.py
 ```
 
-Background as a tmux service:
+Background as a tmux service (Atlas now writes its own rotating log file —
+no `tee` needed; stdout still goes to the tmux pane for live tailing):
 ```bash
-mkdir -p scripts/atlas-log
 tmux new -d -s atlas \
-  './scripts/atlas/atlas.py 2>&1 | tee -a scripts/atlas-log/atlas.log'
-tmux attach -t atlas   # to peek
+  'source ~/.soloaiguy.env && exec python3 scripts/atlas/atlas.py'
+tmux attach -t atlas    # live pane
+tail -F scripts/atlas-log/atlas.log    # rotating file, max ~5 MB total
 ```
 
 ## Cost
 
-Default model is **Haiku 4.5** ($1 in / $5 out per 1M tokens). A typical
-conversation turn is ~10K input + 500 output ≈ $0.013. ~75 messages/day
-≈ $1/day ≈ $30/mo.
+Default model is **Sonnet 4.6** ($3 in / $15 out per 1M tokens). A typical
+conversation turn is ~10K input + 500 output ≈ $0.04. ~75 messages/day
+≈ $3/day ≈ $90/mo. Prompt-caching cuts the system+tools+history prefix
+to ~10% of that on cache hits.
 
-Hard cap is **$25/mo** in `atlas.py`. Atlas refuses to call the API past it
-and tells you in Telegram. Tracked in `scripts/atlas/atlas.db`.
-
-To switch to Sonnet 4.6 (3× the cost, noticeably smarter):
+For 3× cheaper (~$30/mo) at the cost of some judgement, drop to Haiku:
 ```bash
-export ATLAS_MODEL="claude-sonnet-4-6"
+export ATLAS_MODEL="claude-haiku-4-5-20251001"
 ```
+
+Hard cap is **$25/mo** in `atlas.py` — bump it before you start hitting it,
+or Atlas will refuse to reply. Tracked in `scripts/atlas/atlas.db`.
 
 ## Files
 

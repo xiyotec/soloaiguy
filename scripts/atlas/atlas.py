@@ -28,9 +28,11 @@ Cost guard:
 
 from __future__ import annotations
 
+import base64
 import datetime
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 import sqlite3
 import sys
@@ -53,12 +55,16 @@ DB_PATH = Path(__file__).parent / "atlas.db"
 LOG_DIR = REPO / "scripts" / "atlas-log"
 
 MODEL = os.environ.get("ATLAS_MODEL", "claude-sonnet-4-6")
-MAX_TOKENS = 2048
+MAX_TOKENS = 8192               # was 4096 — was silently truncating long replies mid-sentence
 MAX_TURNS_PER_MESSAGE = 12      # tool-use loop iterations per user message
 HISTORY_TURNS = 8               # user/assistant exchanges to keep in context
 
-MONTHLY_HARD_CAP_USD = 25.00
-MONTHLY_SOFT_WARN_USD = 20.00
+# Telegram supports JPEG/PNG/WebP; cap inbound image size to keep base64 sane.
+MAX_IMAGE_BYTES = 5_000_000
+MAX_IMAGES_PER_MESSAGE = 4
+
+MONTHLY_HARD_CAP_USD = 100.00
+MONTHLY_SOFT_WARN_USD = 80.00
 
 # Pricing per 1M tokens. Keep in sync with anthropic.com/pricing.
 # claude-haiku-4-5: $1 input / $5 output. Sonnet 4.6: $3 / $15. Opus 4.7: $15 / $75.
@@ -69,11 +75,17 @@ PRICING = {
 }
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
+LOG_FILE = LOG_DIR / "atlas.log"
+_log_format = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+_stream_handler = logging.StreamHandler(sys.stdout)
+_stream_handler.setFormatter(_log_format)
+# Rotate at 1 MB, keep 5 backups (~5 MB total). Replaces the old `tee -a`
+# pattern that grew unbounded.
+_file_handler = RotatingFileHandler(
+    LOG_FILE, maxBytes=1_000_000, backupCount=5, encoding="utf-8",
 )
+_file_handler.setFormatter(_log_format)
+logging.basicConfig(level=logging.INFO, handlers=[_stream_handler, _file_handler])
 log = logging.getLogger("atlas")
 
 # --- env -----------------------------------------------------------------
@@ -290,12 +302,15 @@ def month_to_date_usd() -> float:
 def tg_send(text: str) -> None:
     if not text:
         return
-    # Telegram cap is 4096 chars. Chunk if needed.
-    chunks = [text[i:i+3800] for i in range(0, len(text), 3800)]
-    for chunk in chunks:
+    # Telegram cap is 4096 chars. Chunk if needed and tag chunks so the
+    # reader knows there's more coming.
+    chunks = [text[i:i+3800] for i in range(0, len(text), 3800)] or [""]
+    total = len(chunks)
+    for i, chunk in enumerate(chunks, 1):
+        body = chunk if total == 1 else f"({i}/{total}) {chunk}"
         data = json.dumps({
             "chat_id": TG_CHAT,
-            "text": chunk,
+            "text": body,
             "disable_web_page_preview": True,
         }).encode()
         req = urllib.request.Request(
@@ -311,6 +326,38 @@ def tg_send(text: str) -> None:
             log.error("Telegram send failed: %s", e)
 
 
+def tg_get_file(file_id: str) -> tuple[bytes, str] | None:
+    """Download a file (image) from Telegram by file_id. Returns (bytes, media_type) or None."""
+    try:
+        with urllib.request.urlopen(
+            f"https://api.telegram.org/bot{TG_TOKEN}/getFile?file_id={urllib.parse.quote(file_id)}",
+            timeout=10,
+        ) as resp:
+            meta = json.loads(resp.read())
+        if not meta.get("ok"):
+            log.warning("getFile not ok: %s", meta)
+            return None
+        file_path = meta["result"]["file_path"]
+        size = meta["result"].get("file_size", 0)
+        if size and size > MAX_IMAGE_BYTES:
+            log.warning("image %s too large (%d bytes); skipping", file_id, size)
+            return None
+        with urllib.request.urlopen(
+            f"https://api.telegram.org/file/bot{TG_TOKEN}/{file_path}",
+            timeout=20,
+        ) as resp:
+            data = resp.read()
+        if len(data) > MAX_IMAGE_BYTES:
+            log.warning("downloaded image %s exceeded cap; skipping", file_id)
+            return None
+        ext = Path(file_path).suffix.lower().lstrip(".")
+        media = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(ext, "image/jpeg")
+        return data, media
+    except Exception as e:
+        log.error("tg_get_file(%s) failed: %s", file_id, e)
+        return None
+
+
 def tg_typing() -> None:
     try:
         data = urllib.parse.urlencode({"chat_id": TG_CHAT, "action": "typing"}).encode()
@@ -322,10 +369,27 @@ def tg_typing() -> None:
         pass
 
 
+def _largest_photo(photos: list) -> dict | None:
+    """Telegram sends a list of progressively larger renditions; pick the biggest under our cap."""
+    if not photos:
+        return None
+    sized = sorted(
+        (p for p in photos if isinstance(p, dict) and p.get("file_id")),
+        key=lambda p: p.get("file_size", 0) or (p.get("width", 0) * p.get("height", 0)),
+        reverse=True,
+    )
+    for p in sized:
+        size = p.get("file_size", 0)
+        if not size or size <= MAX_IMAGE_BYTES:
+            return p
+    return sized[-1] if sized else None
+
+
 def tg_poll_loop():
-    """Yield (text, message_id) for each new message from the configured chat."""
+    """Yield dict {text, image_blocks, message_id} for each new message from the configured chat."""
     offset = int(get_state("tg_offset", "0") or 0)
     log.info("starting Telegram long-poll from offset %s", offset)
+    consecutive_401 = 0
     while True:
         url = (
             f"https://api.telegram.org/bot{TG_TOKEN}/getUpdates"
@@ -334,8 +398,19 @@ def tg_poll_loop():
         try:
             with urllib.request.urlopen(url, timeout=40) as resp:
                 data = json.loads(resp.read())
+            consecutive_401 = 0
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", "replace")
+            if e.code == 401:
+                # Token is invalid. Retrying never helps and just spams the log.
+                consecutive_401 += 1
+                log.error("getUpdates HTTP 401 (#%d): bot token rejected. %s",
+                          consecutive_401, body[:200])
+                if consecutive_401 >= 3:
+                    log.error("3 consecutive 401s — bot token is bad. Exiting so the supervisor can restart with a fresh token.")
+                    sys.exit(2)
+                time.sleep(15)
+                continue
             log.error("getUpdates HTTP %s: %s", e.code, body[:300])
             if e.code == 409:
                 log.error("409 conflict — another poller is using this bot. Sleeping 30s.")
@@ -355,10 +430,27 @@ def tg_poll_loop():
             chat = msg.get("chat") or {}
             if str(chat.get("id", "")) != str(TG_CHAT):
                 continue
-            text = (msg.get("text") or "").strip()
-            if not text:
+            # Telegram puts the user's text in `text` for plain messages and
+            # `caption` for photos with a caption. Treat both the same.
+            text = (msg.get("text") or msg.get("caption") or "").strip()
+            photos = msg.get("photo") or []
+            chosen = _largest_photo(photos)
+            image_blocks: list[dict] = []
+            if chosen:
+                fetched = tg_get_file(chosen["file_id"])
+                if fetched:
+                    raw, media = fetched
+                    image_blocks.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media,
+                            "data": base64.standard_b64encode(raw).decode("ascii"),
+                        },
+                    })
+            if not text and not image_blocks:
                 continue
-            yield text, msg.get("message_id", 0)
+            yield {"text": text, "images": image_blocks, "message_id": msg.get("message_id", 0)}
 
 
 # --- API call with caching + smart retries -------------------------------
@@ -381,6 +473,31 @@ def _tools_with_cache(tool_defs: list) -> list:
     cached = [dict(t) for t in tool_defs]
     cached[-1]["cache_control"] = {"type": "ephemeral"}
     return cached
+
+
+def _messages_with_history_cache(messages: list) -> list:
+    """Add a third cache breakpoint on the last block of the last message.
+    This caches the entire conversation prefix, not just the system+tools
+    prelude. Anthropic supports up to 4 cache_control points; we use 3
+    (system, last tool def, last user block). Returns a deep-copy so we
+    don't mutate the caller's history."""
+    if not messages:
+        return messages
+    out = [dict(m) for m in messages]
+    last = out[-1]
+    content = last.get("content")
+    if not isinstance(content, list) or not content:
+        return out
+    new_content = [dict(b) if isinstance(b, dict) else b for b in content]
+    # Find the last block we can safely tag. text and tool_result both accept it.
+    for i in range(len(new_content) - 1, -1, -1):
+        b = new_content[i]
+        if isinstance(b, dict) and b.get("type") in ("text", "tool_result", "image"):
+            b["cache_control"] = {"type": "ephemeral"}
+            break
+    last["content"] = new_content
+    out[-1] = last
+    return out
 
 
 def _retry_after_seconds(err: Exception) -> int | None:
@@ -426,7 +543,7 @@ def call_model(history: list, system_text: str):
                 max_tokens=MAX_TOKENS,
                 system=sys_blocks,
                 tools=tools_blocks,
-                messages=msgs,
+                messages=_messages_with_history_cache(msgs),
             )
         except anthropic.RateLimitError as e:
             last_err = e
@@ -466,7 +583,8 @@ def _extract_text(content: list) -> str:
     return "\n".join(p for p in parts if p).strip()
 
 
-def handle_user_message(chat_id: str, user_text: str) -> None:
+def handle_user_message(chat_id: str, user_text: str, image_blocks: list | None = None) -> None:
+    image_blocks = image_blocks or []
     # special commands
     cmd = user_text.strip().lower()
     if cmd in ("reset", "/reset"):
@@ -512,7 +630,15 @@ def handle_user_message(chat_id: str, user_text: str) -> None:
         return
 
     history = load_history(chat_id)
-    user_block = [{"type": "text", "text": user_text}]
+    # Anthropic prefers image blocks before text in multimodal user messages.
+    user_block: list[dict] = list(image_blocks)
+    if user_text:
+        user_block.append({"type": "text", "text": user_text})
+    elif not user_block:
+        return  # nothing to send
+    if not user_text and image_blocks:
+        # Caption-less image — give the model a nudge.
+        user_block.append({"type": "text", "text": "(image attached, no caption — describe and ask what I want)"})
     save_message(chat_id, "user", user_block)
     history.append({"role": "user", "content": user_block})
 
@@ -553,6 +679,10 @@ def handle_user_message(chat_id: str, user_text: str) -> None:
             text = _extract_text(assistant_content)
             if not text:
                 text = "(empty reply)"
+            if resp.stop_reason == "max_tokens":
+                # Output cap hit mid-reply — tell the user instead of silently truncating.
+                log.warning("hit max_tokens (out=%d). Reply was truncated.", out_toks)
+                text += f"\n\n[atlas: hit {MAX_TOKENS}-token output cap mid-reply — say 'continue' to resume]"
             if MONTHLY_SOFT_WARN_USD <= mtd < MONTHLY_HARD_CAP_USD:
                 text += f"\n\n[atlas: ${mtd:.2f}/mo of ${MONTHLY_HARD_CAP_USD:.0f} cap]"
             tg_send(text)
@@ -591,10 +721,15 @@ def handle_user_message(chat_id: str, user_text: str) -> None:
 
 def main() -> int:
     log.info("Atlas online. model=%s mtd=$%.2f", MODEL, month_to_date_usd())
-    for text, _msg_id in tg_poll_loop():
-        log.info("user: %s", text[:200])
+    for upd in tg_poll_loop():
+        text = upd.get("text", "")
+        images = upd.get("images") or []
+        if images:
+            log.info("user: [%d image(s)] %s", len(images), text[:200])
+        else:
+            log.info("user: %s", text[:200])
         try:
-            handle_user_message(str(TG_CHAT), text)
+            handle_user_message(str(TG_CHAT), text, image_blocks=images)
         except Exception as e:
             log.exception("handler crashed")
             tg_send(f"Crashed: {type(e).__name__}: {e}")

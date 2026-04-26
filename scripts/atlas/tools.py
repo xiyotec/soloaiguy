@@ -52,23 +52,51 @@ TOOL_DEFS = [
         "name": "read_file",
         "description": (
             "Read a file. Path is relative to repo root or an absolute path "
-            "INSIDE the repo. Returns up to 12000 chars."
+            "INSIDE the repo. By default returns the first 400 lines. Pass "
+            "offset (1-based start line) and limit (line count) to paginate "
+            "through bigger files instead of falling back to bash sed/cat. "
+            "The response header tells you the total line count so you know "
+            "if there's more to fetch."
         ),
         "input_schema": {
             "type": "object",
-            "properties": {"path": {"type": "string"}},
+            "properties": {
+                "path": {"type": "string"},
+                "offset": {"type": "integer", "description": "1-based line to start at. Default 1."},
+                "limit": {"type": "integer", "description": "Max lines to return. Default 400, max 2000."},
+            },
             "required": ["path"],
+        },
+    },
+    {
+        "name": "patch_file",
+        "description": (
+            "Edit a file by replacing exact text. Much cheaper than write_file "
+            "for small changes — no need to re-emit the whole file. old_string "
+            "must appear EXACTLY ONCE in the file (include surrounding lines if "
+            "needed for uniqueness) unless replace_all is true. Returns the "
+            "before/after line count. Use this for any edit smaller than ~50 "
+            "lines; use write_file only for new files or full rewrites."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Path relative to repo root."},
+                "old_string": {"type": "string", "description": "Exact text to find. Must be unique unless replace_all=true."},
+                "new_string": {"type": "string", "description": "Replacement text. Empty string deletes."},
+                "replace_all": {"type": "boolean", "description": "Replace every occurrence (default false)."},
+            },
+            "required": ["path", "old_string", "new_string"],
         },
     },
     {
         "name": "write_file",
         "description": (
-            "Write content to a file in the repo (creates or overwrites). Use "
-            "this to edit posts, calendar, status, scripts, etc. Hard-blocked: "
-            "any path matching .env*, ~/.soloaiguy.env, ~/.affiliates.local, "
-            "~/.ssh/*, .aider.conf.yml, anything outside the repo. For edits to "
-            "an existing file, READ it first so you preserve context — "
-            "write_file overwrites the entire file."
+            "Write content to a file in the repo (creates or overwrites). USE "
+            "patch_file FOR EDITS — write_file is only for new files or full "
+            "rewrites. Hard-blocked: any path matching .env*, ~/.soloaiguy.env, "
+            "~/.affiliates.local, ~/.ssh/*, .aider.conf.yml, anything outside "
+            "the repo."
         ),
         "input_schema": {
             "type": "object",
@@ -229,7 +257,7 @@ def _resolve_repo_path(path: str) -> Path | None:
         return None
 
 
-def handle_read_file(path: str) -> str:
+def handle_read_file(path: str, offset: int = 1, limit: int = 400) -> str:
     full = _resolve_repo_path(path)
     if full is None:
         return f"DENIED: path '{path}' escapes repo root"
@@ -241,9 +269,26 @@ def handle_read_file(path: str) -> str:
         text = full.read_text(errors="replace")
     except Exception as e:
         return f"READ ERROR: {e}"
-    if len(text) > 8000:
-        text = text[:8000] + f"\n\n... (truncated at 8000 chars; full file is {len(text)} chars — read again with offset if you need more)"
-    return text
+    lines = text.splitlines(keepends=True)
+    total = len(lines)
+    start = max(1, int(offset or 1)) - 1            # to 0-based
+    if start >= total:
+        return f"[empty: offset {start + 1} is past EOF (file has {total} lines)]"
+    take = max(1, min(int(limit or 400), 2000))
+    end = min(total, start + take)
+    window = "".join(lines[start:end])
+    # Hard char cap so a single huge line doesn't blow context
+    char_cap = 16000
+    truncated_chars = False
+    if len(window) > char_cap:
+        window = window[:char_cap]
+        truncated_chars = True
+    header = f"[lines {start + 1}-{end} of {total}]"
+    if end < total:
+        header += f" — {total - end} more lines, call again with offset={end + 1}"
+    if truncated_chars:
+        header += f" — char-capped at {char_cap}; use a smaller limit"
+    return f"{header}\n{window}"
 
 
 def _write_path_denied(path: str, full: Path) -> str | None:
@@ -281,6 +326,51 @@ def handle_write_file(path: str, content: str) -> str:
         return f"OK {verb} {path} ({old_size} -> {new_size} bytes)"
     except Exception as e:
         return f"WRITE ERROR: {type(e).__name__}: {e}"
+
+
+def handle_patch_file(path: str, old_string: str, new_string: str,
+                      replace_all: bool = False) -> str:
+    if not old_string:
+        return "DENIED: old_string is empty. Use write_file to create a new file."
+    full = _resolve_repo_path(path)
+    if full is None:
+        return f"DENIED: path '{path}' escapes repo root"
+    denied = _write_path_denied(path, full)
+    if denied:
+        return denied
+    if not full.exists():
+        return f"NOT FOUND: {path} — use write_file to create new files."
+    if full.is_dir():
+        return f"DENIED: '{path}' is a directory."
+    try:
+        text = full.read_text(errors="replace")
+    except Exception as e:
+        return f"READ ERROR: {e}"
+    count = text.count(old_string)
+    if count == 0:
+        return (
+            f"NO MATCH: old_string not found in {path}. "
+            "Read the file again — the text may have whitespace or quotes you didn't expect."
+        )
+    if count > 1 and not replace_all:
+        return (
+            f"AMBIGUOUS: old_string matches {count} times in {path}. "
+            "Either include more surrounding context to make it unique, "
+            "or pass replace_all=true."
+        )
+    new_text = text.replace(old_string, new_string) if replace_all else text.replace(old_string, new_string, 1)
+    if len(new_text.encode("utf-8")) > MAX_WRITE_BYTES:
+        return f"DENIED: result exceeds {MAX_WRITE_BYTES} byte cap."
+    try:
+        full.write_text(new_text)
+    except Exception as e:
+        return f"WRITE ERROR: {type(e).__name__}: {e}"
+    old_lines = text.count("\n")
+    new_lines = new_text.count("\n")
+    delta = new_lines - old_lines
+    sign = "+" if delta >= 0 else ""
+    occurrences = count if replace_all else 1
+    return f"OK patched {path}: {occurrences} replacement(s), {sign}{delta} lines (now {new_lines} lines)"
 
 
 def handle_search_history(query: str, limit: int = 10) -> str:
@@ -355,11 +445,22 @@ def dispatch(name: str, params: dict) -> str:
                 timeout_seconds=params.get("timeout_seconds"),
             )
         if name == "read_file":
-            return handle_read_file(params.get("path", ""))
+            return handle_read_file(
+                path=params.get("path", ""),
+                offset=int(params.get("offset", 1) or 1),
+                limit=int(params.get("limit", 400) or 400),
+            )
         if name == "write_file":
             return handle_write_file(
                 path=params.get("path", ""),
                 content=params.get("content", ""),
+            )
+        if name == "patch_file":
+            return handle_patch_file(
+                path=params.get("path", ""),
+                old_string=params.get("old_string", ""),
+                new_string=params.get("new_string", ""),
+                replace_all=bool(params.get("replace_all", False)),
             )
         if name == "search_history":
             return handle_search_history(
