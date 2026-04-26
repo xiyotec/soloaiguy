@@ -48,6 +48,7 @@ import anthropic
 sys.path.insert(0, str(Path(__file__).parent))
 import tools as atlas_tools  # noqa: E402
 import system_prompt as atlas_prompt  # noqa: E402
+import router as atlas_router  # noqa: E402
 
 # --- config ---------------------------------------------------------------
 
@@ -735,6 +736,35 @@ def handle_user_message(chat_id: str, user_text: str, image_blocks: list | None 
         user_block.append({"type": "text", "text": "(image attached, no caption — describe and ask what I want)"})
     save_message(chat_id, "user", user_block)
     history.append({"role": "user", "content": user_block})
+
+    # --- local routing (Ollama) for chitchat ---------------------------
+    # Skip Anthropic entirely if the message is short/conversational and the
+    # last assistant turn wasn't mid tool-use. Falls back to Sonnet on any
+    # local failure so the user always gets a reply.
+    last_used_tools = bool(
+        history[-2:-1] and history[-2]["role"] == "assistant"
+        and _tool_use_ids(history[-2]["content"])
+    ) if len(history) >= 2 else False
+    if atlas_router.should_route_local(user_text, bool(image_blocks), last_used_tools):
+        try:
+            tg_typing()
+            history_text = [
+                (m["role"], _extract_text(m["content"]))
+                for m in history[:-1]
+                if m["role"] in ("user", "assistant")
+            ]
+            local_text = atlas_router.ollama_reply(user_text, history_text=history_text)
+            saved = atlas_router.estimate_anthropic_cost_usd(
+                len(atlas_prompt.build()) + sum(len(t) for _, t in history_text) + len(user_text),
+                len(local_text),
+            )
+            log.info("local reply via %s: chars=%d est_saved=$%.4f",
+                     atlas_router.OLLAMA_MODEL, len(local_text), saved)
+            save_message(chat_id, "assistant", [{"type": "text", "text": local_text}])
+            tg_send(local_text + "\n\n[atlas: local]")
+            return
+        except Exception as e:
+            log.warning("local route failed (%s) — falling back to Sonnet", e)
 
     system_text = atlas_prompt.build()
     tg_typing()
