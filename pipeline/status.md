@@ -2,6 +2,21 @@
 
 Each entry: what shipped, what we learned, what's costing money, what's next.
 
+## Social channels (XiyoTec brand — funnel to soloaiguy.com)
+
+Brand: site = `soloaiguy.com`, channels = `XiyoTec` (personal brand). Every channel bio links back to the site; every post description links to the corresponding article.
+
+| Platform | URL |
+|---|---|
+| YouTube | https://www.youtube.com/@XiyoTec |
+| X | https://x.com/XiyoTec |
+| LinkedIn | https://www.linkedin.com/in/xiyo-tec-a0818b406/ |
+| Instagram | https://www.instagram.com/xiyotec/ |
+| TikTok | https://www.tiktok.com/@xiyotec |
+| Bluesky | https://bsky.app/profile/xiyotec.bsky.social |
+
+Pilot post for first repurposing run (Short + thread + LinkedIn): `src/content/posts/hybrid-claude-aider-ollama.md` (publishes 2026-04-28).
+
 ---
 
 ## Week of 2026-04-24 (week 0 — kickoff)
