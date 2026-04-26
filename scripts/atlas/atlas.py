@@ -52,7 +52,7 @@ LOG_DIR = REPO / "scripts" / "atlas-log"
 MODEL = os.environ.get("ATLAS_MODEL", "claude-haiku-4-5-20251001")
 MAX_TOKENS = 2048
 MAX_TURNS_PER_MESSAGE = 8       # tool-use loop iterations
-HISTORY_TURNS = 12              # user/assistant exchanges to keep in context
+HISTORY_TURNS = 6               # user/assistant exchanges to keep — Haiku has 50K tok/min cap
 
 MONTHLY_HARD_CAP_USD = 25.00
 MONTHLY_SOFT_WARN_USD = 20.00
@@ -137,15 +137,34 @@ def _db() -> sqlite3.Connection:
 
 
 def load_history(chat_id: str, n: int = HISTORY_TURNS * 2) -> list[dict]:
-    """Return the last N message rows in Anthropic format (oldest first)."""
+    """Return the last N message rows in Anthropic format (oldest first).
+
+    The Anthropic API requires that any `tool_result` block has a corresponding
+    `tool_use` block in the immediately previous assistant message. A naive
+    LIMIT/OFFSET truncation can split a tool round-trip and leave an orphan
+    tool_result at the start, producing a 400. So we trim the head of the
+    window until it begins with a clean user-text message.
+    """
     with _db() as conn:
         rows = conn.execute(
             "SELECT role, content_json FROM messages "
             "WHERE chat_id = ? ORDER BY id DESC LIMIT ?",
             (chat_id, n),
         ).fetchall()
-    rows = list(reversed(rows))
-    return [{"role": r["role"], "content": json.loads(r["content_json"])} for r in rows]
+    msgs = [
+        {"role": r["role"], "content": json.loads(r["content_json"])}
+        for r in reversed(rows)
+    ]
+
+    def _has_tool_result(content: list) -> bool:
+        return any(isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
+
+    while msgs:
+        first = msgs[0]
+        if first["role"] == "user" and not _has_tool_result(first["content"]):
+            break
+        msgs.pop(0)
+    return msgs
 
 
 def save_message(chat_id: str, role: str, content: list) -> None:
@@ -311,6 +330,23 @@ def _extract_text(content: list) -> str:
 
 
 def handle_user_message(chat_id: str, user_text: str) -> None:
+    # special commands
+    cmd = user_text.strip().lower()
+    if cmd in ("reset", "/reset"):
+        with _db() as conn:
+            conn.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
+            conn.commit()
+        tg_send("Conversation history cleared. Fresh start.")
+        return
+    if cmd in ("status", "/status"):
+        mtd = month_to_date_usd()
+        with _db() as conn:
+            n = conn.execute(
+                "SELECT COUNT(*) AS c FROM messages WHERE chat_id = ?", (chat_id,)
+            ).fetchone()["c"]
+        tg_send(f"model={MODEL}\nmtd_spend=${mtd:.2f} / ${MONTHLY_HARD_CAP_USD:.0f} cap\nhistory={n} messages")
+        return
+
     # cost guard
     mtd = month_to_date_usd()
     if mtd >= MONTHLY_HARD_CAP_USD:
@@ -337,9 +373,26 @@ def handle_user_message(chat_id: str, user_text: str) -> None:
                 tools=atlas_tools.TOOL_DEFS,
                 messages=history,
             )
+        except anthropic.RateLimitError as e:
+            log.warning("rate limited; sleeping 60s before retry: %s", e)
+            tg_send("(rate limited — sleeping 60s. Reply 'reset' to clear history if this keeps happening.)")
+            time.sleep(60)
+            try:
+                resp = client.messages.create(
+                    model=MODEL, max_tokens=MAX_TOKENS,
+                    system=system_text, tools=atlas_tools.TOOL_DEFS, messages=history,
+                )
+            except Exception as e2:
+                log.error("rate limit retry failed: %s", e2)
+                tg_send(f"Still rate limited. Try a shorter prompt or 'reset'.")
+                return
         except anthropic.APIError as e:
             log.error("Anthropic API error: %s", e)
-            tg_send(f"API error talking to Claude: {e}. Try again in a sec.")
+            tg_send(f"API error: {str(e)[:500]}")
+            return
+        except Exception as e:
+            log.exception("unexpected error in messages.create")
+            tg_send(f"Crashed in API call: {type(e).__name__}: {str(e)[:300]}")
             return
 
         in_toks = resp.usage.input_tokens

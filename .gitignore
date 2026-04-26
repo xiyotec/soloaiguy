@@ -32,6 +32,7 @@ scripts/intel-log/
 scripts/exp-log/
 scripts/publish-log/
 scripts/atlas-log/
+scripts/atlas/atlas.db
 EXPERIMENT_NEEDS.md
 pipeline/research/
 __pycache__/
