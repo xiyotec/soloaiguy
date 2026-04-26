@@ -17,4 +17,6 @@ Atlas writes here when it learns something worth remembering across conversation
 
 ## Memories
 
-(empty — Atlas will populate this as conversations happen)
+- [Market Intel Apr 2026](market-intel-apr-2026.md) — AI tool landscape, GitHub trending repos, dev pain points, and content angles as of April 2026.
+- [Computer Use TODO](computer-use-todo.md) — Xiyo wants to wire up computer use for Atlas; not done yet, remind if it hasn't been tackled.
+- [Atlas Lessons](atlas-lessons.md) — Mistakes Atlas has made and how to avoid them: truncation, empty replies, mid-task dropouts.

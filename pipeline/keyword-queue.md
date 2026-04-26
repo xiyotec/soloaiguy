@@ -9,6 +9,8 @@ Move topics into editorial-calendar.md when they get queued for drafting.
 - ✅ #2 was: "Setting up qwen2.5-coder:7b on a 3070" → drafted as `qwen-3070-benchmark`, ships 2026-05-01
 - ✅ #3 was: "The cheapest way to get into AI coding agents" → drafted as `cheapest-ai-coding-agent`, ships 2026-05-05
 - ✅ Bonus: "Run a coding agent on a cron" → drafted as `cron-driven-agent`, ships 2026-05-08
+- ✅ Trending (intel): CLAUDE.md, codex-cli vs Claude Code, 70/30 problem, goose, Google ADK → all in calendar
+- ✅ Trending (Apr 26 GitHub scan): Agent frameworks, MCP, n8n, CrewAI, LangGraph, OpenClaw → all in calendar
 
 ## High priority (write next)
 
@@ -34,13 +36,17 @@ Move topics into editorial-calendar.md when they get queued for drafting.
 - A budget-conscious dev's guide to managing API keys
 - Free Anthropic alternatives that don't suck
 - How I built a scheduled agent that researches topics for me overnight
+- Self-hosting an MCP server: why it's worth the hassle (moved up from idea buffer — MCP now mainstream)
 
 ## Idea buffer (raw ideas, untested)
 
 - "I gave Aider a 1000-line legacy file. Here's what happened."
 - "The minimum viable agent: 50 lines of Python that earns me $X/month"
-- "Self-hosting an MCP server: why it's worth the hassle"
 - "I tried to build a SaaS in a weekend with only local models. Here's the result."
+- "OpenClaw: is the fastest-growing OSS project in history worth running locally?"
+- "n8n + local LLM: build an AI workflow engine that costs you nothing per month"
+- "LangGraph vs CrewAI for solo devs: which one actually makes sense at our scale?"
+- "MCP explained for developers who don't want the hype"
 
 ## Selection criteria (hold the bar)
 
