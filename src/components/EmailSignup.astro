@@ -4,38 +4,22 @@ interface Props {
 }
 const { variant = 'inline' } = Astro.props;
 
-const FORM_ACTION = import.meta.env.PUBLIC_NEWSLETTER_ACTION || '';
-const enabled = FORM_ACTION.length > 0;
+// Beehiiv hosted subscribe form. Public ID — fine to hardcode (it ships in
+// HTML on every page either way). Swap this if we ever move providers.
+const BEEHIIV_FORM_ID = 'cb16155f-528d-48f8-ab93-f676171d5eaf';
 ---
-{enabled ? (
-  <form
-    class={`email-signup email-signup--${variant}`}
-    action={FORM_ACTION}
-    method="post"
-    target="_blank"
-    rel="noopener"
-  >
-    <label for="email-signup-input">
-      Get the next post by email. No spam, no tracking, unsubscribe in one click.
-    </label>
-    <div class="email-signup-row">
-      <input
-        type="email"
-        id="email-signup-input"
-        name="email"
-        placeholder="you@example.com"
-        required
-        autocomplete="email"
-      />
-      <button type="submit">Subscribe</button>
-    </div>
-    <p class="email-signup-note">
-      Or grab the <a href="/rss.xml">RSS feed</a> — same content, no email.
-    </p>
-  </form>
-) : (
-  <p class="email-signup-fallback">
-    Want updates? <a href="/rss.xml">RSS</a> is the canonical feed for now —
-    email signup launches once we pick a provider.
+<div class={`email-signup email-signup--${variant}`}>
+  <iframe
+    src={`https://subscribe-forms.beehiiv.com/${BEEHIIV_FORM_ID}`}
+    class="beehiiv-embed"
+    data-test-id="beehiiv-embed"
+    frameborder="0"
+    scrolling="no"
+    title="Subscribe to the newsletter"
+    loading="lazy"
+  ></iframe>
+  <p class="email-signup-note">
+    Or grab the <a href="/rss.xml">RSS feed</a> — same content, no email.
   </p>
-)}
+</div>
+<script async src="https://subscribe-forms.beehiiv.com/embed.js"></script>
