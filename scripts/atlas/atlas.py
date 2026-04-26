@@ -241,22 +241,33 @@ _SERVER_TOOL_BLOCK_TYPES = {"server_tool_use", "web_search_tool_result"}
 
 
 def _strip_server_tool_blocks(content: list) -> list:
-    """Remove server-side tool blocks (web_search etc.) from a content list.
+    """Remove server-side tool blocks (web_search etc.) from a content list,
+    and strip citations from any surviving text blocks.
 
     Anthropic emits server_tool_use + web_search_tool_result block pairs in
-    the assistant message when the model uses a server-side tool. Persisting
-    both across turns is (a) wasteful — a single search adds 10-50K tokens of
-    raw snippets — and (b) fragile: if the pair gets desynchronized in storage
-    or replay, the next API call dies with a 400 ("orphan web_search_tool_result").
-    The model's text response already absorbs the searched content, so dropping
-    the raw blocks loses no real information.
+    the assistant message when the model uses a server-side tool. Text blocks
+    in that same message carry `citations` referencing those result indexes.
+    Persisting any of it across turns is (a) wasteful — a single search adds
+    10-50K tokens of raw snippets — and (b) fragile: if the pair gets
+    desynchronized the next API call dies with a 400 ("orphan
+    web_search_tool_result"), and orphan citations trigger a separate 400
+    ("Could not find search result for citation index"). The model's text
+    already absorbs the searched content, so dropping all of it loses no
+    real information.
     """
     if not isinstance(content, list):
         return content
-    return [
-        b for b in content
-        if not (isinstance(b, dict) and b.get("type") in _SERVER_TOOL_BLOCK_TYPES)
-    ]
+    cleaned = []
+    for b in content:
+        if not isinstance(b, dict):
+            cleaned.append(b)
+            continue
+        if b.get("type") in _SERVER_TOOL_BLOCK_TYPES:
+            continue
+        if b.get("type") == "text" and "citations" in b:
+            b = {k: v for k, v in b.items() if k != "citations"}
+        cleaned.append(b)
+    return cleaned
 
 
 def _sanitize_history(msgs: list[dict]) -> list[dict]:
