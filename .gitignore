@@ -30,6 +30,8 @@ scripts/results/
 scripts/cron.log
 scripts/intel-log/
 scripts/exp-log/
+scripts/publish-log/
+scripts/atlas-log/
 EXPERIMENT_NEEDS.md
 pipeline/research/
 __pycache__/
