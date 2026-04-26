@@ -1,7 +1,7 @@
 """Tool definitions and handlers for Atlas.
 
 All tool handlers return a string (the tool_result content). They never raise —
-errors are returned as text so Atlas can recover and tell the boss what failed.
+errors are returned as text so Atlas can recover and tell Xiyo what failed.
 
 Philosophy: Atlas is trusted to act. The hard guardrails block only catastrophic
 actions (privilege escalation, disk wipe, supply-chain attacks, secret-file
@@ -190,7 +190,7 @@ def _bash_safety_check(cmd: str) -> str | None:
             return f"BLOCKED (catastrophic): command contains '{pat.strip()}'."
     for pat in SECRET_FILE_WRITE_PATTERNS:
         if pat in cmd:
-            return f"BLOCKED (secret-file write): '{pat}'. If you need to update env vars, ask the boss to do it manually."
+            return f"BLOCKED (secret-file write): '{pat}'. If you need to update env vars, ask Xiyo to do it manually."
     for pat in PIPE_TO_SHELL_PATTERNS:
         if pat in lc:
             return (
@@ -200,7 +200,7 @@ def _bash_safety_check(cmd: str) -> str | None:
             )
     for pat in FORCE_PUSH_MAIN:
         if pat in cmd:
-            return f"BLOCKED (force-push to main): '{pat}'. Tell the boss what you wanted to overwrite and let them decide."
+            return f"BLOCKED (force-push to main): '{pat}'. Tell Xiyo what you wanted to overwrite and let them decide."
     return None
 
 

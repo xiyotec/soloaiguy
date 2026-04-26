@@ -475,13 +475,31 @@ def handle_user_message(chat_id: str, user_text: str) -> None:
             conn.commit()
         tg_send("Conversation history cleared. Fresh start.")
         return
+    if cmd in ("help", "/help"):
+        tg_send(
+            "Atlas commands:\n"
+            "  status — model, spend, history depth\n"
+            "  reset  — clear conversation history\n"
+            "  help   — this message\n"
+            "\nAnything else: just talk to me."
+        )
+        return
     if cmd in ("status", "/status"):
         mtd = month_to_date_usd()
         with _db() as conn:
             n = conn.execute(
                 "SELECT COUNT(*) AS c FROM messages WHERE chat_id = ?", (chat_id,)
             ).fetchone()["c"]
-        tg_send(f"model={MODEL}\nmtd_spend=${mtd:.2f} / ${MONTHLY_HARD_CAP_USD:.0f} cap\nhistory={n} messages")
+            today_usd = conn.execute(
+                "SELECT COALESCE(SUM(usd), 0) AS s FROM spend WHERE day = ?",
+                (datetime.date.today().isoformat(),),
+            ).fetchone()["s"]
+        tg_send(
+            f"model={MODEL}\n"
+            f"today=${today_usd:.3f}  mtd=${mtd:.2f} / ${MONTHLY_HARD_CAP_USD:.0f} cap\n"
+            f"history={n} msgs (keep last {HISTORY_TURNS * 2} rows)\n"
+            f"commands: status, reset, help"
+        )
         return
 
     # cost guard
