@@ -16,8 +16,12 @@ Setup:
        ./scripts/atlas/atlas.py
 
 Run as a service (recommended):
-  tmux new -d -s atlas "source ~/.soloaiguy.env; cd ~/builds/soloaiguy; \\
-    exec python3 scripts/atlas/atlas.py >> scripts/atlas-log/atlas.log 2>&1"
+  tmux new -d -s atlas \\
+    "source ~/.soloaiguy.env && cd ~/builds/soloaiguy && exec python3 scripts/atlas/atlas.py"
+
+  Do NOT add `>> atlas.log 2>&1` — atlas.py already writes to scripts/atlas-log/
+  via RotatingFileHandler. Adding a shell redirect to the same file produces
+  duplicate lines AND defeats rotation (the redirect grows unbounded).
 
 Cost guard:
   Hard cap is $25/month for Anthropic API tokens. Atlas refuses to call the
@@ -797,7 +801,18 @@ def handle_user_message(chat_id: str, user_text: str, image_blocks: list | None 
 
         assistant_content = _content_for_message(resp)
         save_message(chat_id, "assistant", assistant_content)
-        history.append({"role": "assistant", "content": assistant_content})
+        # Also strip server-tool blocks (web_search) from the in-memory copy.
+        # save_message() strips before persist, but we were appending the raw
+        # response here, so subsequent call_model invocations within this same
+        # turn-loop sent the unstripped blocks. If Anthropic ever returns the
+        # pair asymmetrically, or citations reference a result we didn't carry
+        # forward, you get a 400 on the next call. Strip to match what hits the
+        # wire and what gets persisted — the model's text already absorbed the
+        # search content, so dropping the raw blocks loses no real info.
+        history.append({
+            "role": "assistant",
+            "content": _strip_server_tool_blocks(assistant_content),
+        })
 
         if resp.stop_reason != "tool_use":
             text = _extract_text(assistant_content)
