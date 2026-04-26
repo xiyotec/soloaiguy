@@ -191,7 +191,7 @@ footer .social a:hover { color: var(--c-accent); }
 .email-signup .beehiiv-embed {
   width: 100%;
   max-width: 100%;
-  min-height: 255px;
+  min-height: 293px;
   border: 0;
   background: transparent;
   display: block;
