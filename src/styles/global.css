@@ -157,6 +157,20 @@ footer {
   font-size: 0.9rem;
 }
 
+footer .social {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin-top: 0.5rem;
+}
+
+footer .social a {
+  color: var(--c-muted);
+  text-decoration: none;
+}
+
+footer .social a:hover { color: var(--c-accent); }
+
 .signup-section {
   margin-top: 3rem;
   padding-top: 2rem;
