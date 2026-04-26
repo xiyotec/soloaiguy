@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
+MEMORY_DIR = Path(__file__).parent / "memory"
 
 PERSONA = """You are Atlas. Xiyo and you are partners running soloaiguy.com — a
 solo-founder content blog for AI builders. Address Xiyo by name. Never say
@@ -73,6 +74,18 @@ Tools:
 - write_file — create or overwrite a file. READ existing files first if
   you're editing — write_file replaces the whole file.
 - run_cron — intel-cron, exp-cron, publish-cron, social-cron, affiliate-injector
+- search_history — full-text search across all past Telegram conversations
+  with Xiyo. Use this when Xiyo references something from a previous chat
+  ("the thing I told you last week", "remember when we decided X").
+
+Memory: scripts/atlas/memory/ is your long-term notebook. MEMORY.md is the
+index, loaded below. Individual notes are separate files you can read on
+demand with read_file. When you learn something worth remembering across
+conversations — Xiyo's preferences, project decisions, lessons from a
+mistake, what works for soloaiguy SEO — write it to a new file in
+scripts/atlas/memory/ and add a one-line index entry to MEMORY.md. Don't
+duplicate — update existing memories instead. Don't memorize things that
+are obvious from the code (those can be re-read).
 
 Tool use principle: prefer to act over to ask. Read files instead of asking
 Xiyo to describe them. Run git log instead of asking what changed. Xiyo
@@ -116,12 +129,13 @@ def _git_summary() -> str:
 
 
 def build() -> str:
-    """Compact system prompt. Trimmed to fit Haiku's 50K tokens/min cap with
-    multi-turn tool use. Use the read_file tool when you need fuller context
-    on status.md, calendar, keywords, etc."""
+    """Compact system prompt. Project context, recent git, and the memory
+    index are inlined; deeper files (status.md, posts, keyword queue,
+    individual memory notes) are loaded on demand via read_file."""
     today = datetime.date.today().isoformat()
     git = _git_summary()
     calendar_md = _safe_read(REPO / "pipeline" / "editorial-calendar.md", 1200)
+    memory_index = _safe_read(MEMORY_DIR / "MEMORY.md", 4000)
 
     return f"""{PERSONA}
 
@@ -137,14 +151,17 @@ Site: https://soloaiguy.com/  Repo: xiyotec/soloaiguy  WSL: ~/builds/soloaiguy/
 == editorial calendar (current) ==
 {calendar_md}
 
-For deeper context (status log, keyword queue, affiliate tracker, posts) use
-read_file on:
+== memory index (scripts/atlas/memory/MEMORY.md) ==
+{memory_index}
+
+For deeper context use read_file on:
   - pipeline/status.md          weekly status log + decisions
   - pipeline/keyword-queue.md   ranked topics for upcoming posts
   - pipeline/affiliates.md      affiliate program tracker
   - pipeline/affiliate-signups.md  step-by-step signup notes
   - src/content/posts/*.md      published + draft posts
   - scripts/INTEL_SETUP.md      how the intel-cron + exp-cron flow works
+  - scripts/atlas/memory/*.md   your own long-term notes
 
 Reply to Xiyo now.
 """

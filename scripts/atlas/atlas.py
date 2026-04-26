@@ -16,11 +16,14 @@ Setup:
        ./scripts/atlas/atlas.py
 
 Run as a service (recommended):
-  tmux new -d -s atlas '/home/xiyo/builds/soloaiguy/scripts/atlas/atlas.py 2>&1 | tee -a /home/xiyo/builds/soloaiguy/scripts/atlas-log/atlas.log'
+  tmux new -d -s atlas "source ~/.soloaiguy.env; cd ~/builds/soloaiguy; \\
+    exec python3 scripts/atlas/atlas.py >> scripts/atlas-log/atlas.log 2>&1"
 
 Cost guard:
-  Hard cap is $25/month. Atlas refuses to call the API beyond that.
-  Soft warn at $20. Tracked in SQLite.
+  Hard cap is $25/month for Anthropic API tokens. Atlas refuses to call the
+  API beyond that. Soft warn at $20. Tracked in SQLite. Note: server-side
+  web_search costs are billed separately ($10/1000 searches) and not tracked
+  in this counter.
 """
 
 from __future__ import annotations
@@ -49,10 +52,10 @@ REPO = Path(__file__).resolve().parent.parent.parent
 DB_PATH = Path(__file__).parent / "atlas.db"
 LOG_DIR = REPO / "scripts" / "atlas-log"
 
-MODEL = os.environ.get("ATLAS_MODEL", "claude-haiku-4-5-20251001")
+MODEL = os.environ.get("ATLAS_MODEL", "claude-sonnet-4-6")
 MAX_TOKENS = 2048
-MAX_TURNS_PER_MESSAGE = 8       # tool-use loop iterations
-HISTORY_TURNS = 6               # user/assistant exchanges to keep — Haiku has 50K tok/min cap
+MAX_TURNS_PER_MESSAGE = 12      # tool-use loop iterations per user message
+HISTORY_TURNS = 8               # user/assistant exchanges to keep in context
 
 MONTHLY_HARD_CAP_USD = 25.00
 MONTHLY_SOFT_WARN_USD = 20.00
@@ -204,10 +207,11 @@ def _sanitize_history(msgs: list[dict]) -> list[dict]:
 
 
 def save_message(chat_id: str, role: str, content: list) -> None:
+    ts = datetime.datetime.now(datetime.timezone.utc).isoformat()
     with _db() as conn:
         conn.execute(
             "INSERT INTO messages (chat_id, ts, role, content_json) VALUES (?, ?, ?, ?)",
-            (chat_id, datetime.datetime.utcnow().isoformat(), role, json.dumps(content)),
+            (chat_id, ts, role, json.dumps(content)),
         )
         conn.commit()
 
@@ -271,8 +275,10 @@ def month_to_date_usd() -> float:
 # --- telegram ------------------------------------------------------------
 
 def tg_send(text: str) -> None:
+    if not text:
+        return
     # Telegram cap is 4096 chars. Chunk if needed.
-    chunks = [text[i:i+3800] for i in range(0, len(text), 3800)] or [""]
+    chunks = [text[i:i+3800] for i in range(0, len(text), 3800)]
     for chunk in chunks:
         data = json.dumps({
             "chat_id": TG_CHAT,
@@ -320,7 +326,9 @@ def tg_poll_loop():
             log.error("getUpdates HTTP %s: %s", e.code, body[:300])
             if e.code == 409:
                 log.error("409 conflict — another poller is using this bot. Sleeping 30s.")
-            time.sleep(15 if e.code == 409 else 5)
+                time.sleep(30)
+            else:
+                time.sleep(5)
             continue
         except Exception as e:
             log.error("getUpdates failed: %s", e)
@@ -443,8 +451,8 @@ def handle_user_message(chat_id: str, user_text: str) -> None:
             text = _extract_text(assistant_content)
             if not text:
                 text = "(empty reply)"
-            if mtd >= MONTHLY_SOFT_WARN_USD and mtd < MONTHLY_HARD_CAP_USD:
-                text += f"\n\n[atlas: $${mtd:.2f}/mo of ${MONTHLY_HARD_CAP_USD:.0f} cap]"
+            if MONTHLY_SOFT_WARN_USD <= mtd < MONTHLY_HARD_CAP_USD:
+                text += f"\n\n[atlas: ${mtd:.2f}/mo of ${MONTHLY_HARD_CAP_USD:.0f} cap]"
             tg_send(text)
             return
 

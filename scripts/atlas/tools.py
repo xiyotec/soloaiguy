@@ -11,11 +11,15 @@ verify what he's installing or running before he does it.
 
 from __future__ import annotations
 
+import json
 import os
+import sqlite3
 import subprocess
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
+ATLAS_DB = Path(__file__).parent / "atlas.db"
+MAX_WRITE_BYTES = 1_000_000  # 1 MB hard cap on write_file content
 
 # Anthropic-side tool definitions (passed to messages.create as `tools=`).
 TOOL_DEFS = [
@@ -73,6 +77,23 @@ TOOL_DEFS = [
                 "content": {"type": "string", "description": "Full file contents to write."},
             },
             "required": ["path", "content"],
+        },
+    },
+    {
+        "name": "search_history",
+        "description": (
+            "Full-text search across ALL past Telegram conversations with Xiyo "
+            "(persisted in atlas.db). Use when Xiyo references a previous chat, "
+            "or when reviewing your own past behavior to learn from it. Matches "
+            "are case-insensitive substring on message text."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Substring to match."},
+                "limit": {"type": "integer", "description": "Max matches to return (default 10, max 50)."},
+            },
+            "required": ["query"],
         },
     },
     {
@@ -238,6 +259,8 @@ def _write_path_denied(path: str, full: Path) -> str | None:
 
 
 def handle_write_file(path: str, content: str) -> str:
+    if len(content.encode("utf-8")) > MAX_WRITE_BYTES:
+        return f"DENIED: content exceeds {MAX_WRITE_BYTES} byte cap. Split into smaller files."
     full = _resolve_repo_path(path)
     if full is None:
         return f"DENIED: path '{path}' escapes repo root"
@@ -256,6 +279,52 @@ def handle_write_file(path: str, content: str) -> str:
         return f"OK {verb} {path} ({old_size} -> {new_size} bytes)"
     except Exception as e:
         return f"WRITE ERROR: {type(e).__name__}: {e}"
+
+
+def handle_search_history(query: str, limit: int = 10) -> str:
+    q = (query or "").strip()
+    if not q:
+        return "ERROR: empty query"
+    n = max(1, min(int(limit or 10), 50))
+    if not ATLAS_DB.exists():
+        return "NO HISTORY: atlas.db does not exist yet."
+    try:
+        conn = sqlite3.connect(ATLAS_DB)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT id, ts, role, content_json FROM messages "
+            "WHERE LOWER(content_json) LIKE ? "
+            "ORDER BY id DESC LIMIT ?",
+            (f"%{q.lower()}%", n),
+        ).fetchall()
+        conn.close()
+    except Exception as e:
+        return f"DB ERROR: {type(e).__name__}: {e}"
+    if not rows:
+        return f"No matches for '{q}'."
+    out = [f"{len(rows)} match(es) for '{q}' (most recent first):"]
+    for r in rows:
+        try:
+            blocks = json.loads(r["content_json"])
+            text_parts = []
+            for b in blocks if isinstance(blocks, list) else []:
+                if isinstance(b, dict):
+                    if b.get("type") == "text":
+                        text_parts.append(b.get("text", ""))
+                    elif b.get("type") == "tool_use":
+                        text_parts.append(f"[tool_use {b.get('name')} {json.dumps(b.get('input', {}))[:120]}]")
+                    elif b.get("type") == "tool_result":
+                        c = b.get("content", "")
+                        if isinstance(c, list):
+                            c = " ".join(x.get("text", "") for x in c if isinstance(x, dict))
+                        text_parts.append(f"[tool_result {str(c)[:200]}]")
+            text = " ".join(p for p in text_parts if p).strip()
+        except Exception:
+            text = r["content_json"][:300]
+        if len(text) > 400:
+            text = text[:400] + "…"
+        out.append(f"- [{r['ts'][:16]}] {r['role']}: {text}")
+    return "\n".join(out)
 
 
 def handle_run_cron(name: str, dry_run: bool = False, env: dict | None = None) -> str:
@@ -289,6 +358,11 @@ def dispatch(name: str, params: dict) -> str:
             return handle_write_file(
                 path=params.get("path", ""),
                 content=params.get("content", ""),
+            )
+        if name == "search_history":
+            return handle_search_history(
+                query=params.get("query", ""),
+                limit=int(params.get("limit", 10)),
             )
         if name == "run_cron":
             return handle_run_cron(
