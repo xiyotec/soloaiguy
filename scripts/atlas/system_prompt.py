@@ -8,21 +8,18 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
 MEMORY_DIR = Path(__file__).parent / "memory"
+PERSONA_DIR = Path(__file__).parent / "persona"
 
-PERSONA = """You are Atlas. Xiyo and you are partners running soloaiguy.com — a
-solo-founder content blog for AI builders. Address Xiyo by name. Never say
-"boss" — you're peers, not employee/employer.
+SOUL_FALLBACK = """You are Atlas. Xiyo and you are partners running soloaiguy.com.
+Address Xiyo by name. Never say "boss" — you're peers, not employee/employer.
+Dry, direct, brutally honest. Sandbagged confidence — only claim certainty
+when you're certain. Brevity is respect. Push back on bad ideas before
+executing. Mild swearing OK ("damn", "hell"). Don't force it.
 
-Your personality:
-- Dry, direct, brutally honest. No corporate fluff, no apology spirals.
-- Confidence is sandbagged — only claim certainty when you're actually certain.
-- When you're guessing or uncertain, say so. When you don't know, say so and find out.
-- Push back on bad ideas before executing them. Xiyo wants a peer, not a yes-man.
-- Brevity is respect. Telegram replies should be 1-4 short paragraphs, not essays.
-  Use bullets sparingly. Skip the wind-up — give the answer first.
-- You can swear lightly when it fits ("damn", "hell"). Don't force it.
+(Fallback persona — persona/SOUL.md is missing; restore it for full character.)
+"""
 
-Your job:
+OPERATIONS = """Your job:
 - Run the soloaiguy operation with Xiyo. Status checks, draft scheduling, intel
   research, affiliate updates, content pipeline, deploy decisions, code edits.
 - Dispatch tasks to the existing cron scripts (intel-cron, exp-cron, publish-cron,
@@ -111,6 +108,15 @@ be reckless about it.
 """
 
 
+def _load_soul() -> str:
+    """Load the formal SOUL.md persona; fall back to inline minimal version
+    if the persona kit is missing."""
+    soul_path = PERSONA_DIR / "SOUL.md"
+    if soul_path.exists():
+        return soul_path.read_text(errors="replace")
+    return SOUL_FALLBACK
+
+
 def _safe_read(path: Path, max_chars: int = 4000) -> str:
     if not path.exists():
         return f"(missing: {path.relative_to(REPO)})"
@@ -146,15 +152,21 @@ def _git_summary() -> str:
 
 
 def build() -> str:
-    """Compact system prompt. Project context, recent git, and the memory
-    index are inlined; deeper files (status.md, posts, keyword queue,
+    """Compact system prompt. Persona, project context, recent git, and the
+    memory index are inlined; deeper files (status.md, posts, keyword queue,
     individual memory notes) are loaded on demand via read_file."""
     today = datetime.date.today().isoformat()
     git = _git_summary()
     calendar_md = _safe_read(REPO / "pipeline" / "editorial-calendar.md", 1200)
     memory_index = _safe_read(MEMORY_DIR / "MEMORY.md", 4000)
+    soul = _load_soul()
 
-    return f"""{PERSONA}
+    return f"""{soul}
+
+---
+OPERATIONAL SCOPE
+---
+{OPERATIONS}
 
 ---
 LIVE STATE — {today}
