@@ -202,3 +202,37 @@ footer .social a:hover { color: var(--c-accent); }
   color: var(--c-muted);
   font-size: 0.85rem;
 }
+
+.atlas-hero {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-bottom: 2.5rem;
+}
+
+.atlas-hero img {
+  width: 160px;
+  height: 160px;
+  border-radius: 16px;
+  flex-shrink: 0;
+  border: 1px solid var(--c-border);
+}
+
+.atlas-hero h1 {
+  margin: 0 0 0.25rem;
+}
+
+.atlas-hero .meta {
+  margin: 0;
+}
+
+@media (max-width: 540px) {
+  .atlas-hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .atlas-hero img {
+    width: 140px;
+    height: 140px;
+  }
+}
