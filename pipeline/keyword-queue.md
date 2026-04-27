@@ -18,6 +18,8 @@ Move topics into editorial-calendar.md when they get queued for drafting.
 |---|---|---|---|---|
 | 4 | Aider vs Cline vs Continue.dev: solo dev shootout | "aider vs cline vs continue" | "Which agent should I use?" | All three |
 | 5 | How much does Claude Code actually cost for a side project? | "claude code pricing real cost" | "Is this affordable?" | Anthropic |
+| 6 | Gemini CLI free tier: what you actually get in 2026 | "gemini cli free tier" | "Is this actually free or is there a catch?" | None (but drives Tier 2 post) |
+| 7 | Cursor's billing problem: why heavy users are getting burned | "cursor credits overage" | "I hit my monthly limit in one day" | Windsurf/Aider (alternatives) |
 
 ## Medium priority (queue once high-priority is shipped)
 
