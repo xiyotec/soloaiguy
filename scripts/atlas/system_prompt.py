@@ -119,40 +119,34 @@ def _load_soul() -> str:
 
 
 
-def _active_calendar(raw: str, weeks_ahead: int = 3) -> str:
-    """Extract only the Active table + the next N weeks of Queued/Drafted rows.
-    The full calendar can be 6KB+; passing all of it on every turn busts cache
-    and gives the model irrelevant past entries. This trims to what matters."""
-    import datetime, re
+
+def _active_calendar(raw, weeks_ahead=3):
+    """Trim editorial-calendar.md to Active section + next N weeks of queued rows."""
+    import datetime as _dt
+    import re as _re
     if not raw:
         return ""
     try:
-        today = datetime.date.today()
-        cutoff = today + datetime.timedelta(weeks=weeks_ahead)
+        today = _dt.date.today()
+        cutoff = today + _dt.timedelta(weeks=weeks_ahead)
     except Exception:
         return raw[:1200]
-
-    out_parts = []
-    # Keep the Active table verbatim — it's small and always relevant.
-    m = re.search(r"(##+\s*Active.*?)(?=
-##+\s|\Z)", raw, re.S | re.I)
+    parts = []
+    m = _re.search(r"(##+\s*Active.*?)(?=\n##+\s|\Z)", raw, _re.S | _re.I)
     if m:
-        out_parts.append(m.group(1).strip())
-
-    # Keep ONLY rows from other tables whose date falls in [today, cutoff].
-    date_pat = re.compile(r"(20\d{2}-\d{2}-\d{2})")
+        parts.append(m.group(1).strip())
+    date_pat = _re.compile(r"(20\d{2}-\d{2}-\d{2})")
     for line in raw.splitlines():
         if line.startswith("|") and not line.startswith("|--") and "Active" not in line:
             md = date_pat.search(line)
             if md:
                 try:
-                    d = datetime.date.fromisoformat(md.group(1))
+                    d = _dt.date.fromisoformat(md.group(1))
                     if today <= d <= cutoff:
-                        out_parts.append(line)
+                        parts.append(line)
                 except ValueError:
                     pass
-    return "
-".join(out_parts) if out_parts else raw[:1200]
+    return "\n".join(parts) if parts else raw[:1200]
 
 
 def _safe_read(path: Path, max_chars: int = 4000) -> str:
