@@ -62,7 +62,7 @@ LOG_DIR = REPO / "scripts" / "atlas-log"
 
 MODEL = os.environ.get("ATLAS_MODEL", "claude-sonnet-4-6")
 MAX_TOKENS = 8192               # was 4096 — was silently truncating long replies mid-sentence
-MAX_TURNS_PER_MESSAGE = 12      # tool-use loop iterations per user message
+MAX_TURNS_PER_MESSAGE = 60      # tool-use loop iterations per user message
 HISTORY_TURNS = 30               # user/assistant exchanges to keep in context
 
 # Telegram supports JPEG/PNG/WebP; cap inbound image size to keep base64 sane.
@@ -694,6 +694,12 @@ def handle_user_message(chat_id: str, user_text: str, image_blocks: list | None 
                 user_text = user_text[len(prefix):].lstrip()
                 force_claude = True
                 break
+        # Continuation phrases — these usually follow a Claude turn that
+        # bailed out at the iteration cap; routing them to local would
+        # lose all the context built up. Force Claude.
+        _CONTINUATION_PHRASES = ("continue", "keep going", "carry on", "go on", "resume", "finish it", "and?")
+        if not force_claude and user_text.strip().lower().rstrip('.!?') in _CONTINUATION_PHRASES:
+            force_claude = True
 
     image_blocks = image_blocks or []
     # special commands
