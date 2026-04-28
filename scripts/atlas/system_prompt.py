@@ -117,6 +117,44 @@ def _load_soul() -> str:
     return SOUL_FALLBACK
 
 
+
+
+def _active_calendar(raw: str, weeks_ahead: int = 3) -> str:
+    """Extract only the Active table + the next N weeks of Queued/Drafted rows.
+    The full calendar can be 6KB+; passing all of it on every turn busts cache
+    and gives the model irrelevant past entries. This trims to what matters."""
+    import datetime, re
+    if not raw:
+        return ""
+    try:
+        today = datetime.date.today()
+        cutoff = today + datetime.timedelta(weeks=weeks_ahead)
+    except Exception:
+        return raw[:1200]
+
+    out_parts = []
+    # Keep the Active table verbatim — it's small and always relevant.
+    m = re.search(r"(##+\s*Active.*?)(?=
+##+\s|\Z)", raw, re.S | re.I)
+    if m:
+        out_parts.append(m.group(1).strip())
+
+    # Keep ONLY rows from other tables whose date falls in [today, cutoff].
+    date_pat = re.compile(r"(20\d{2}-\d{2}-\d{2})")
+    for line in raw.splitlines():
+        if line.startswith("|") and not line.startswith("|--") and "Active" not in line:
+            md = date_pat.search(line)
+            if md:
+                try:
+                    d = datetime.date.fromisoformat(md.group(1))
+                    if today <= d <= cutoff:
+                        out_parts.append(line)
+                except ValueError:
+                    pass
+    return "
+".join(out_parts) if out_parts else raw[:1200]
+
+
 def _safe_read(path: Path, max_chars: int = 4000) -> str:
     if not path.exists():
         return f"(missing: {path.relative_to(REPO)})"
@@ -157,7 +195,7 @@ def build() -> str:
     individual memory notes) are loaded on demand via read_file."""
     today = datetime.date.today().isoformat()
     git = _git_summary()
-    calendar_md = _safe_read(REPO / "pipeline" / "editorial-calendar.md", 1200)
+    calendar_md = _active_calendar(_safe_read(REPO / "pipeline" / "editorial-calendar.md", 1200, max_chars=20000))
     memory_index = _safe_read(MEMORY_DIR / "MEMORY.md", 4000)
     soul = _load_soul()
 

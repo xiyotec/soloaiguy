@@ -63,7 +63,7 @@ LOG_DIR = REPO / "scripts" / "atlas-log"
 MODEL = os.environ.get("ATLAS_MODEL", "claude-sonnet-4-6")
 MAX_TOKENS = 8192               # was 4096 — was silently truncating long replies mid-sentence
 MAX_TURNS_PER_MESSAGE = 12      # tool-use loop iterations per user message
-HISTORY_TURNS = 8               # user/assistant exchanges to keep in context
+HISTORY_TURNS = 30               # user/assistant exchanges to keep in context
 
 # Telegram supports JPEG/PNG/WebP; cap inbound image size to keep base64 sane.
 MAX_IMAGE_BYTES = 5_000_000
@@ -177,6 +177,8 @@ client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
 
 def _db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
+    conn.execute('PRAGMA journal_mode=WAL')
+    conn.execute('PRAGMA synchronous=NORMAL')
     conn.row_factory = sqlite3.Row
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS messages (
@@ -683,6 +685,16 @@ def _extract_text(content: list) -> str:
 
 
 def handle_user_message(chat_id: str, user_text: str, image_blocks: list | None = None) -> None:
+    # Force-Claude escape hatch: messages starting with "/c " or "claude: " bypass
+    # the local Ollama router and go straight to Sonnet with full DB history.
+    force_claude = False
+    if user_text:
+        for prefix in ("/c ", "claude: ", "/claude "):
+            if user_text.lower().startswith(prefix):
+                user_text = user_text[len(prefix):].lstrip()
+                force_claude = True
+                break
+
     image_blocks = image_blocks or []
     # special commands
     cmd = user_text.strip().lower()
@@ -749,7 +761,7 @@ def handle_user_message(chat_id: str, user_text: str, image_blocks: list | None 
         history[-2:-1] and history[-2]["role"] == "assistant"
         and _tool_use_ids(history[-2]["content"])
     ) if len(history) >= 2 else False
-    if atlas_router.should_route_local(user_text, bool(image_blocks), last_used_tools):
+    if not force_claude and atlas_router.should_route_local(user_text, bool(image_blocks), last_used_tools):
         try:
             tg_typing()
             history_text = [
