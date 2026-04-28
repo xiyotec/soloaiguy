@@ -189,6 +189,8 @@ def build() -> str:
     individual memory notes) are loaded on demand via read_file."""
     today = datetime.date.today().isoformat()
     git = _git_summary()
+    # Atlas working memory — running scratch pad of current state.
+    working_memory = _safe_read(REPO / "scripts" / "atlas" / "working_memory.md", 1500)
     calendar_md = _active_calendar(_safe_read(REPO / "pipeline" / "editorial-calendar.md", 1200))
     memory_index = _safe_read(MEMORY_DIR / "MEMORY.md", 4000)
     soul = _load_soul()
@@ -210,6 +212,10 @@ Site: https://soloaiguy.com/  Repo: xiyotec/soloaiguy  WSL: ~/builds/soloaiguy/
 {git}
 
 == editorial calendar (current) ==
+## Working memory
+{working_memory}
+
+## Editorial calendar (active + 3wk)
 {calendar_md}
 
 == memory index (scripts/atlas/memory/MEMORY.md) ==
