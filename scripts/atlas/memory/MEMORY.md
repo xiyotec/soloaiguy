@@ -18,7 +18,5 @@ Atlas writes here when it learns something worth remembering across conversation
 ## Memories
 
 - [Market Intel Apr 2026](market-intel-apr-2026.md) — AI tool landscape, GitHub trending repos, dev pain points, and content angles as of April 2026.
-- [Computer Use TODO](computer-use-todo.md) — Xiyo wants to wire up computer use for Atlas; not done yet, remind if it hasn't been tackled.
 - [Atlas Lessons](atlas-lessons.md) — Mistakes Atlas has made and how to avoid them: truncation, empty replies, mid-task dropouts.
-- [Beehiiv API Key TODO](beehiiv-api-todo.md) — Xiyo paused beehiiv signup at Stripe ID verification (2026-04-26). Remind on next newsletter work.
 - [RunPod Affiliate](runpod-affiliate.md) — Link in hand (2026-04-26), not wired. Deploy when Xiyo writes about cloud GPU / hosted inference.
